@@ -8,6 +8,7 @@ pub trait ColAccess {
     fn get_col(&self) -> Option<Vec<Self::Output>>;
 }
 
+#[derive(Debug)]
 pub struct MatDim {
     pub rows: usize,
     pub cols: usize

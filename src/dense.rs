@@ -1,4 +1,5 @@
 use crate::util::{GetDims,MatDim};
+use std::fmt;
 
 #[derive(PartialEq,Debug)]
 pub struct Dense<T> {
@@ -42,6 +43,21 @@ impl<T> GetDims for Dense<T> {
             rows: self.row_count,
             cols: self.col_count,
         }
+    }
+}
+
+impl<T: fmt::Display + Copy + Default + PartialEq + fmt::Debug> fmt::Display for Dense<T> {
+    // This trait requires `fmt` with this exact signature.
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for row_index in 0..self.row_count {
+            write!(f, "|").unwrap();
+            for col_index in 0..self.col_count {
+                let entry = self.get_col(col_index)[row_index];
+                write!(f, "{:>5}", entry).unwrap();
+            }
+            write!(f, "|\n").unwrap();
+        }
+        Ok(())
     }
 }
 

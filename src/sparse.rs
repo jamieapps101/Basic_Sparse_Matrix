@@ -89,6 +89,7 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug> Csr<T> {
     pub fn get_row_complete(&self, index: usize) -> Option<Vec<T>> {
         if self.row_index.len() == 0 { return None }
         // need to handle special case where only enties in the index row exist with none in row index+1
+        if index >= self.row_index.len() { return None }
         let row_start = self.row_index[index];
         let index_with_offset = index+1;
         let row_end;
@@ -177,21 +178,37 @@ impl Csr<f32> {
         let mut l = Self::new(self.col_count, self.row_count);
         for i in 0..self.row_count {
             for j in 0..(i+1) {
+                // println!("i={i},j={j}");
+                // println!("l (before):\n{l}");
                 let mut sum: f32 = 0.0;
                 for k in 0..j {
-                    let a = l.get_row_complete(i).unwrap()[k];
-                    let b = l.get_row_complete(j).unwrap()[k];
+                    // println!(">k={k}");
+                    let a = if let Some(row) = l.get_row_complete(i) {
+                        row[k] 
+                    } else {
+                        0.0
+                    };
+                    let b = if let Some(row) = l.get_row_complete(j) {
+                        row[k]
+                    } else {
+                        0.0
+                    };
                     sum += a * b;
                 }
+                // println!(">sum={sum}");
                 let val_to_insert;
                 if i==j {
                     val_to_insert = (self.get_row_complete(i).unwrap()[i]-sum).powf(0.5);
                 } else {
                     let temp = self.get_row_complete(i).unwrap()[j]-sum;
+                    // println!(">temp={temp}");
                     let a = l.get_row_complete(j).unwrap()[j];
+                    // println!(">a={a}");
                     val_to_insert = (1.0 / a) * temp;
                 }
+                // println!(">val_to_insert={val_to_insert}");
                 l.insert_unchecked(val_to_insert, i, j);
+                // println!("l (after):\n{l}");
             }
         }
         Ok(l.finalise())
@@ -202,10 +219,15 @@ impl<T: fmt::Display + Copy + Default + PartialEq + fmt::Debug> fmt::Display for
     // This trait requires `fmt` with this exact signature.
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         for row_index in 0..self.row_count {
-            let row = self.get_row_complete(row_index).unwrap();
             write!(f, "|").unwrap();
-            for entry in row {
-                write!(f, "{:>5}", entry).unwrap();
+            if let Some(row) = self.get_row_complete(row_index) {
+                for entry in row {
+                    write!(f, "{:>5}", entry).unwrap();
+                }
+            } else {
+                for _ in 0..self.col_count {
+                    write!(f, "{:>5}", T::default()).unwrap();
+                }
             }
             write!(f, "|\n").unwrap();
         }
@@ -364,7 +386,7 @@ mod test {
     }
 
     #[test]
-    fn cholesky_decomposition() {
+    fn cholesky_decomposition_0() {
         
         let m: Csr<f32> = Csr::from_data(&[
             &[  4.0, 12.0,-16.0],
@@ -393,6 +415,26 @@ mod test {
 
         assert_eq!(lower_l, lower_l_ref);
         assert_eq!(upper_l, upper_l_ref);
+    }
+
+    #[test]
+    fn cholesky_decomposition_1() {
+        let m = Csr::from_data(&[
+            &[8.0, 0.0, 0.0, 0.0],
+            &[0.0, 7.0, 1.0, 0.0],
+            &[0.0, 1.0, 3.0, 0.0],
+            &[0.0, 0.0, 0.0, 2.0]
+        ]);
+        println!("m:\n{m}");
+
+        let lower_l_ref: Csr<f32>  = Csr::from_data(&[
+            &[2.828427, 0.0       , 0.0      , 0.0       ],
+            &[0.0     , 2.6457512 , 0.0      , 0.0       ],
+            &[0.0     , 0.37796451, 1.6903086, 0.0       ],
+            &[0.0     , 0.0       , 0.0      , 1.4142135]
+        ]);
+        let lower_l = m.cholesky_decomp().unwrap();
+        assert_eq!(lower_l, lower_l_ref);
     }
 
     #[test]
