@@ -1,11 +1,5 @@
 use std::fmt;
-use crate::util::GetDims;
-
-#[derive(Debug)]
-pub enum CsrErr {
-    MatrixFinalised,
-    NonSquareMatrix
-}
+use crate::util::{GetDims,MatErr};
 
 #[derive(PartialEq)]
 pub struct Csr<T> {
@@ -19,9 +13,9 @@ pub struct Csr<T> {
 
 #[derive(PartialEq, Debug)]
 pub struct CsrEntry<T: std::fmt::Debug> {
-    v: T,
-    col_index: usize,
-    row_index: usize
+    pub v: T,
+    pub col_index: usize,
+    pub row_index: usize
 }
 
 impl<T: Copy + Default + PartialEq + std::fmt::Debug> Csr<T> {
@@ -57,14 +51,17 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug> Csr<T> {
         self
     }
 
-    /* 
-        /// should only be used to insert data in order of appearance, col by col, row by row
-        pub fn insert(&mut self, value: T, row: usize, col: usize) ->  Result<(), CsrErr> {
-            if self.is_finalised {
-                return Err(CsrErr::MatrixFinalised)
-            }
+     
+    /// should only be used to insert data in order of appearance, col by col, row by row
+    pub fn insert(&mut self, value: T, row: usize, col: usize) ->  Result<(), MatErr> {
+        if self.is_finalised {
+            return Err(MatErr::MatrixFinalised)
         }
-    */ 
+        // todo: add more checks here
+        self.insert_unchecked(value, row, col);
+        Ok(())
+    }
+     
 
     /// same as above, but does not do the checking that data is in order
     /// treats default value of T as the value to not store; 0 for most types
@@ -92,6 +89,7 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug> Csr<T> {
     pub fn get_row_complete(&self, index: usize) -> Option<Vec<T>> {
         if self.row_index.len() == 0 { return None }
         // need to handle special case where only enties in the index row exist with none in row index+1
+        if index >= self.row_index.len() { return None }
         let row_start = self.row_index[index];
         let index_with_offset = index+1;
         let row_end;
@@ -150,7 +148,10 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug> Csr<T> {
 }
 
 impl<T: Copy + Default + PartialEq + std::fmt::Debug + std::ops::Add<T,Output=T> + std::ops::Mul<T,Output=T>> Csr<T> {
-    pub fn mul(&self, rhs: crate::dense::Dense<T>) -> Self {
+    pub fn mul(&self, rhs: crate::dense::Dense<T>) -> Result<Self,MatErr> {
+        if self.col_count != rhs.get_dims().rows {
+            return Err(MatErr::IncorrectDimensions)
+        }
         let mut result = Self::new(rhs.get_dims().cols, self.row_count);
         for row_index in 0..self.row_count {
             let row = self.get_row_compact(row_index).unwrap();
@@ -165,33 +166,49 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug + std::ops::Add<T,Output=T>
                 result.insert_unchecked(value, row_index, col_index)
             }
         }
-        result.finalise()
+        Ok(result.finalise())
     }
 }
 
 impl Csr<f32> {
-    pub fn cholesky_decomp(&self) -> Result<Self,CsrErr> {
+    pub fn cholesky_decomp(&self) -> Result<Self,MatErr> {
         if self.row_count != self.col_count {
-            return Err(CsrErr::NonSquareMatrix)
+            return Err(MatErr::NonSquareMatrix)
         }
         let mut l = Self::new(self.col_count, self.row_count);
         for i in 0..self.row_count {
             for j in 0..(i+1) {
+                // println!("i={i},j={j}");
+                // println!("l (before):\n{l}");
                 let mut sum: f32 = 0.0;
                 for k in 0..j {
-                    let a = l.get_row_complete(i).unwrap()[k];
-                    let b = l.get_row_complete(j).unwrap()[k];
+                    // println!(">k={k}");
+                    let a = if let Some(row) = l.get_row_complete(i) {
+                        row[k] 
+                    } else {
+                        0.0
+                    };
+                    let b = if let Some(row) = l.get_row_complete(j) {
+                        row[k]
+                    } else {
+                        0.0
+                    };
                     sum += a * b;
                 }
+                // println!(">sum={sum}");
                 let val_to_insert;
                 if i==j {
                     val_to_insert = (self.get_row_complete(i).unwrap()[i]-sum).powf(0.5);
                 } else {
                     let temp = self.get_row_complete(i).unwrap()[j]-sum;
+                    // println!(">temp={temp}");
                     let a = l.get_row_complete(j).unwrap()[j];
+                    // println!(">a={a}");
                     val_to_insert = (1.0 / a) * temp;
                 }
+                // println!(">val_to_insert={val_to_insert}");
                 l.insert_unchecked(val_to_insert, i, j);
+                // println!("l (after):\n{l}");
             }
         }
         Ok(l.finalise())
@@ -202,10 +219,15 @@ impl<T: fmt::Display + Copy + Default + PartialEq + fmt::Debug> fmt::Display for
     // This trait requires `fmt` with this exact signature.
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         for row_index in 0..self.row_count {
-            let row = self.get_row_complete(row_index).unwrap();
             write!(f, "|").unwrap();
-            for entry in row {
-                write!(f, "{:>5}", entry).unwrap();
+            if let Some(row) = self.get_row_complete(row_index) {
+                for entry in row {
+                    write!(f, "{:>5}", entry).unwrap();
+                }
+            } else {
+                for _ in 0..self.col_count {
+                    write!(f, "{:>5}", T::default()).unwrap();
+                }
             }
             write!(f, "|\n").unwrap();
         }
@@ -364,7 +386,7 @@ mod test {
     }
 
     #[test]
-    fn cholesky_decomposition() {
+    fn cholesky_decomposition_0() {
         
         let m: Csr<f32> = Csr::from_data(&[
             &[  4.0, 12.0,-16.0],
@@ -396,8 +418,28 @@ mod test {
     }
 
     #[test]
+    fn cholesky_decomposition_1() {
+        let m = Csr::from_data(&[
+            &[8.0, 0.0, 0.0, 0.0],
+            &[0.0, 7.0, 1.0, 0.0],
+            &[0.0, 1.0, 3.0, 0.0],
+            &[0.0, 0.0, 0.0, 2.0]
+        ]);
+        println!("m:\n{m}");
+
+        let lower_l_ref: Csr<f32>  = Csr::from_data(&[
+            &[2.828427, 0.0       , 0.0      , 0.0       ],
+            &[0.0     , 2.6457512 , 0.0      , 0.0       ],
+            &[0.0     , 0.37796451, 1.6903086, 0.0       ],
+            &[0.0     , 0.0       , 0.0      , 1.4142135]
+        ]);
+        let lower_l = m.cholesky_decomp().unwrap();
+        assert_eq!(lower_l, lower_l_ref);
+    }
+
+    #[test]
     fn test_dense_mul() {
-        let d = crate::dense::Dense::new_from_data(&[
+        let d = crate::dense::Dense::from_data(&[
             &[ 1, 2, 3, 4],
             &[ 5, 6, 7, 8],
             &[ 9,10,11,12]
@@ -419,7 +461,7 @@ mod test {
             &[ 1, 5, 9],
         ]);
 
-        let output = s.mul(d);
+        let output = s.mul(d).unwrap();
 
         assert_eq!(output,output_ref);
     }

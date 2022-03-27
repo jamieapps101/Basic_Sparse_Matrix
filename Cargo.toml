@@ -1,5 +1,5 @@
 [package]
-name = "sparse_matrix"
+name = "basic_sparse_matrix"
 version = "0.1.0"
 edition = "2021"
 
