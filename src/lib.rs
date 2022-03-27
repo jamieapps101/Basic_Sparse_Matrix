@@ -1,4 +1,6 @@
 pub mod sparse;
+pub mod dense;
+pub mod util;
 
 #[cfg(test)]
 mod tests {
