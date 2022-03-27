@@ -1,11 +1,5 @@
 use std::fmt;
-use crate::util::GetDims;
-
-#[derive(Debug)]
-pub enum CsrErr {
-    MatrixFinalised,
-    NonSquareMatrix
-}
+use crate::util::{GetDims,MatErr};
 
 #[derive(PartialEq)]
 pub struct Csr<T> {
@@ -19,9 +13,9 @@ pub struct Csr<T> {
 
 #[derive(PartialEq, Debug)]
 pub struct CsrEntry<T: std::fmt::Debug> {
-    v: T,
-    col_index: usize,
-    row_index: usize
+    pub v: T,
+    pub col_index: usize,
+    pub row_index: usize
 }
 
 impl<T: Copy + Default + PartialEq + std::fmt::Debug> Csr<T> {
@@ -57,14 +51,17 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug> Csr<T> {
         self
     }
 
-    /* 
-        /// should only be used to insert data in order of appearance, col by col, row by row
-        pub fn insert(&mut self, value: T, row: usize, col: usize) ->  Result<(), CsrErr> {
-            if self.is_finalised {
-                return Err(CsrErr::MatrixFinalised)
-            }
+     
+    /// should only be used to insert data in order of appearance, col by col, row by row
+    pub fn insert(&mut self, value: T, row: usize, col: usize) ->  Result<(), MatErr> {
+        if self.is_finalised {
+            return Err(MatErr::MatrixFinalised)
         }
-    */ 
+        // todo: add more checks here
+        self.insert_unchecked(value, row, col);
+        Ok(())
+    }
+     
 
     /// same as above, but does not do the checking that data is in order
     /// treats default value of T as the value to not store; 0 for most types
@@ -150,7 +147,10 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug> Csr<T> {
 }
 
 impl<T: Copy + Default + PartialEq + std::fmt::Debug + std::ops::Add<T,Output=T> + std::ops::Mul<T,Output=T>> Csr<T> {
-    pub fn mul(&self, rhs: crate::dense::Dense<T>) -> Self {
+    pub fn mul(&self, rhs: crate::dense::Dense<T>) -> Result<Self,MatErr> {
+        if self.col_count != rhs.get_dims().rows {
+            return Err(MatErr::IncorrectDimensions)
+        }
         let mut result = Self::new(rhs.get_dims().cols, self.row_count);
         for row_index in 0..self.row_count {
             let row = self.get_row_compact(row_index).unwrap();
@@ -165,14 +165,14 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug + std::ops::Add<T,Output=T>
                 result.insert_unchecked(value, row_index, col_index)
             }
         }
-        result.finalise()
+        Ok(result.finalise())
     }
 }
 
 impl Csr<f32> {
-    pub fn cholesky_decomp(&self) -> Result<Self,CsrErr> {
+    pub fn cholesky_decomp(&self) -> Result<Self,MatErr> {
         if self.row_count != self.col_count {
-            return Err(CsrErr::NonSquareMatrix)
+            return Err(MatErr::NonSquareMatrix)
         }
         let mut l = Self::new(self.col_count, self.row_count);
         for i in 0..self.row_count {
@@ -397,7 +397,7 @@ mod test {
 
     #[test]
     fn test_dense_mul() {
-        let d = crate::dense::Dense::new_from_data(&[
+        let d = crate::dense::Dense::from_data(&[
             &[ 1, 2, 3, 4],
             &[ 5, 6, 7, 8],
             &[ 9,10,11,12]
@@ -419,7 +419,7 @@ mod test {
             &[ 1, 5, 9],
         ]);
 
-        let output = s.mul(d);
+        let output = s.mul(d).unwrap();
 
         assert_eq!(output,output_ref);
     }

@@ -16,3 +16,10 @@ pub struct MatDim {
 pub trait GetDims {
     fn get_dims(&self) -> MatDim;
 }
+
+#[derive(Debug)]
+pub enum MatErr {
+    MatrixFinalised,
+    NonSquareMatrix,
+    IncorrectDimensions,
+}

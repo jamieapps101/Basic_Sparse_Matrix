@@ -17,7 +17,7 @@ impl<T: Default + Clone + Copy> Dense<T> {
         Self { col_count, row_count, data: vec![vec![val; row_count];col_count] }
     }
 
-    pub fn new_from_data(data: &[&[T]]) -> Self {
+    pub fn from_data(data: &[&[T]]) -> Self {
         let col_count = data.len();
         let row_count = data[0].len();
         Self {
@@ -27,8 +27,12 @@ impl<T: Default + Clone + Copy> Dense<T> {
         }
     }
 
-    pub fn get_col(&self,col_index: usize) -> &[T] {
+    pub fn get_col(&self, col_index: usize) -> &[T] {
         &self.data[col_index]
+    }
+
+    pub fn get_col_mut(&mut self, col_index: usize) -> &mut [T] {
+        &mut self.data[col_index]
     }
 }
 
@@ -48,7 +52,7 @@ mod test {
     #[test]
     fn init() {
         let a = Dense::<i32>::new_default_with_dims(5,7);
-        let b = Dense::new_from_data(&[
+        let b = Dense::from_data(&[
             &[0,0,0,0,0,0,0],
             &[0,0,0,0,0,0,0],
             &[0,0,0,0,0,0,0],
@@ -60,7 +64,7 @@ mod test {
 
     #[test]
     fn get_col() {
-        let a = Dense::<i32>::new_from_data(&[
+        let a = Dense::<i32>::from_data(&[
             &[1,2,3],
             &[4,5,6],
             &[7,8,9],
