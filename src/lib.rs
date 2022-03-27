@@ -50,7 +50,6 @@ fn forward_substitution(l: Csr<f32>, b: Dense<f32>) -> Dense<f32> {
 
 /// bakward substitution, solved L*x=y for x
 fn backward_substitution(l_star: Csr<f32>, y: Dense<f32>) -> Dense<f32> {
-    println!("backward_substitution");
     let dims = y.get_dims();
     let mut x = Dense::<f32>::new_default_with_dims(dims.cols, dims.rows);
     for col_index in 0..x.get_dims().cols {
@@ -60,7 +59,7 @@ fn backward_substitution(l_star: Csr<f32>, y: Dense<f32>) -> Dense<f32> {
             for entry in l_star.get_row_compact(row_index).unwrap().iter().skip(1) {
                 l_x = l_x + entry.v*x.get_col(col_index)[entry.col_index];
             }
-            let next_x = (y_element - l_x)/l_star.get_row_compact(row_index).unwrap().last().unwrap().v;
+            let next_x = (y_element - l_x)/l_star.get_row_compact(row_index).unwrap()[0].v;
             x.get_col_mut(col_index)[row_index] = next_x;
         }
     }
