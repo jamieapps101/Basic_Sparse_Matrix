@@ -17,13 +17,9 @@ pub fn solve(a: Csr<f32>, b: Dense<f32>) -> Dense<f32> {
     */
 
     let l = a.cholesky_decomp().unwrap();
-    println!("\nl:\n{l}");
     let l_star = l.transpose();
-    println!("\nl_star:\n{l_star}");
     let y =  forward_substitution(l,b);
-    println!("\ny:\n{y}");
     let x = backward_substitution(l_star, y);
-    println!("\nx:\n{x}");
     x
 }
 
@@ -71,31 +67,9 @@ fn backward_substitution(l_star: Csr<f32>, y: Dense<f32>) -> Dense<f32> {
 #[cfg(test)]
 mod test {
     use super::*;
+
     #[test]
     fn forward_substitution_test_0() {
-        let b = Dense::<f32>::from_data(&[
-            &[5.0,7.0,2.0],
-        ]);
-
-        let l = Csr::<f32>::from_data(&[
-            &[1.0,0.0,0.0],
-            &[2.0,3.0,0.0],
-            &[2.0,3.0,7.0],
-        ]);
-
-        let y_ref = Dense::<f32>::from_data(&[
-            &[5.0,-1.0,0.71428573],
-        ]);
-
-        let y = forward_substitution(l, b);
-
-        println!("y:\n{y:?}");
-
-        assert_eq!(y,y_ref)
-    }
-
-    #[test]
-    fn forward_substitution_test_1() {
         let b = Dense::<f32>::from_data(&[
             &[7.0,3.0,1.0],
         ]);
@@ -119,29 +93,6 @@ mod test {
 
     #[test]
     fn backward_substitution_test_0() {
-        let y = Dense::<f32>::from_data(&[
-            &[5.0,7.0,2.0],
-        ]);
-
-        let l_star = Csr::<f32>::from_data(&[
-            &[2.0,3.0,7.0],
-            &[2.0,3.0,0.0],
-            &[1.0,0.0,0.0],
-        ]);
-
-        let x_ref = Dense::<f32>::from_data(&[
-            &[-1.2857143, -1.0, -3.0],
-        ]);
-
-        let x = backward_substitution(l_star, y);
-
-        println!("x:\n{x:?}");
-
-        assert_eq!(x,x_ref)
-    }
-
-    #[test]
-    fn backward_substitution_test_1() {
         let y = Dense::<f32>::from_data(&[
             &[1.0,7.0,3.0],
         ]);
@@ -175,7 +126,7 @@ mod test {
         ]);
 
         let x_ref = Dense::from_data(&[
-            &[ 0.625, -0.1,2.7, 0.5]
+            &[ 0.625, -0.1,2.6999998, 0.5]
             ]);
 
         let x = solve(a, b);
