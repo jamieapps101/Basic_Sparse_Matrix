@@ -1,9 +1,12 @@
+use std::fmt;
 
+#[derive(Debug)]
 pub enum CsrErr {
     MatrixFinalised,
+    NonSquareMatrix
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq)]
 pub struct CSR<T> {
     col_count: usize,
     row_count: usize,
@@ -46,8 +49,10 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug> CSR<T> {
 
     /// adds the value of NNZ onto the end of the row_indexes
     fn finalise(mut self) -> Self {
-        self.is_finalised = true;
-        self.row_index.push(self.v.len());
+        if !self.is_finalised {
+            self.is_finalised = true;
+            self.row_index.push(self.v.len());
+        }
         self
     }
 
@@ -64,7 +69,6 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug> CSR<T> {
     /// treats default value of T as the value to not store; 0 for most types
     fn insert_unchecked(&mut self, value: T, row: usize, col: usize) {
         if value != T::default() {
-            println!("value: {value:?}, row: {row}, col: {col}");
             self.v.push(value);
             self.col_index.push(col);
             // strictly speaking the new row index should always be less than or equal to
@@ -85,16 +89,27 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug> CSR<T> {
     }
 
     pub fn get_row_complete(&self, index: usize) -> Option<Vec<T>> {
+        if self.row_index.len() == 0 { return None }
+        // need to handle special case where only enties in the index row exist with none in row index+1
         let row_start = self.row_index[index];
-        let row_end = self.row_index[index+1];
+        let index_with_offset = index+1;
+        let row_end;
+        if self.row_index.len() == index_with_offset {
+            row_end = self.v.len()
+        } else {
+            row_end = self.row_index[index+1];
+        }
+        
         let mut return_vec = Vec::new();
         let mut prev_col = 0;
         for (col,entry) in self.col_index[row_start..row_end].iter().zip(self.v[row_start..row_end].iter()) {
+            if col != &0 {
                 for _ in prev_col..*col {
                     return_vec.push(T::default());
                 }
-                prev_col = *col+1;
-                return_vec.push(*entry)
+            }    
+            prev_col = *col+1;
+            return_vec.push(*entry)
         }
         for _ in prev_col..(self.col_count) {
             return_vec.push(T::default());
@@ -108,13 +123,11 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug> CSR<T> {
             for entry_index in 0..self.v.len() {
                 // for each col index, find any entries with matching col index
                 if col_index==self.col_index[entry_index] {
-
                     let col = col_index;
                     let val = self.v[entry_index];
-
                     let mut row = 0;
                     loop {
-                        if self.row_index[row+1] <= entry_index {
+                        if self.row_index.len() > 1 && self.row_index[row+1] <= entry_index {
                             row += 1;
                         } else {
                             break;
@@ -128,32 +141,63 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug> CSR<T> {
         t.finalise()
     }
 
+    pub fn pair_with_tranpose(self) -> (Self,Self) {
+        let t = self.transpose();
+        (self,t)
+    }
+
 }
 
 impl CSR<f32> {
-    pub fn cholesky_decomp(&self) -> (Self,Self) {
-        assert_eq!(self.row_count, self.col_count);
+    pub fn cholesky_decomp(&self) -> Result<Self,CsrErr> {
+        if self.row_count != self.col_count {
+            return Err(CsrErr::NonSquareMatrix)
+        }
         let mut l = Self::new(self.col_count, self.row_count);
         for i in 0..self.row_count {
-            for j in 0..i {
+            for j in 0..(i+1) {
                 let mut sum: f32 = 0.0;
                 for k in 0..j {
-                    sum += l.get_row_complete(i).unwrap()[k] * l.get_row_complete(j).unwrap()[k];
+                    let a = l.get_row_complete(i).unwrap()[k];
+                    let b = l.get_row_complete(j).unwrap()[k];
+                    sum += a * b;
                 }
-
                 let val_to_insert;
                 if i==j {
                     val_to_insert = (self.get_row_complete(i).unwrap()[i]-sum).powf(0.5);
                 } else {
                     let temp = self.get_row_complete(i).unwrap()[j]-sum;
-                    val_to_insert = 1.0 / l.get_row_complete(j).unwrap()[j] * temp;
+                    let a = l.get_row_complete(j).unwrap()[j];
+                    val_to_insert = (1.0 / a) * temp;
                 }
                 l.insert_unchecked(val_to_insert, i, j);
             }
         }
-        // Conjugate transpose (just transpose in this case)
-        let l_ct = l.transpose();
-        (l,l_ct)
+        Ok(l.finalise())
+    }
+}
+
+impl<T: fmt::Display + Copy + Default + PartialEq + fmt::Debug> fmt::Display for CSR<T> {
+    // This trait requires `fmt` with this exact signature.
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for row_index in 0..self.row_count {
+            let row = self.get_row_complete(row_index).unwrap();
+            write!(f, "|").unwrap();
+            for entry in row {
+                write!(f, "{:>5}", entry).unwrap();
+            }
+            write!(f, "|\n").unwrap();
+        }
+        Ok(())
+    }
+}
+
+impl<T: fmt::Display + Copy + Default + PartialEq + fmt::Debug > fmt::Debug for CSR<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "v:         {:?}\n", self.v ).unwrap();
+        write!(f, "col_index: {:?}\n", self.col_index ).unwrap();
+        write!(f, "row_index: {:?}\n", self.row_index ).unwrap();
+        Ok(())
     }
 }
 
@@ -192,6 +236,16 @@ mod test {
         assert_eq!(m.row_index.as_slice(), &[0,2,4,7,8]);
     }
 
+    #[test]
+    fn example_mat_2() {
+        let m = CSR::from_data(&[
+            &[5],
+        ]);
+
+        assert_eq!(m.v.as_slice(),         &[5]);
+        assert_eq!(m.col_index.as_slice(), &[0]);
+        assert_eq!(m.row_index.as_slice(), &[0,1]);
+    }
 
     #[test]
     fn get_row_by_index() {
@@ -210,10 +264,52 @@ mod test {
             CsrEntry {v: &70, row_index: 2, col_index: 4},
         ]));
     }
+    
+    #[test]
+    fn get_row_by_index_1x1() -> Result<(),String> {
+
+        let mut m = CSR::<f32>::new(5, 5);
+        m.insert_unchecked(2.0, 0, 0);
+        let v = m.get_row_complete(0).unwrap();
+        if v[0] != 2.0 {
+            let t = v[0];
+            return Err(format!("{t} != 2.0"))
+        }
+
+        Ok(())
+    }
 
     #[test]
-    fn transpose() {
-        println!("Create m");
+    fn transpose_1x1() {
+        let m = CSR::from_data(&[&[10]]);
+        let m_transpose_ref = CSR::from_data(&[ &[10], ]);
+        let m_transpose = m.transpose();
+        assert_eq!(m_transpose,m_transpose_ref);
+    }
+
+    #[test]
+    fn transpose_nxn() {
+        let m = CSR::from_data(&[
+            &[10,5,7,9,2],
+            &[10,8,5,9,3],
+            &[ 0,5,4,6,2],
+            &[ 1,2,7,9,2],
+            ]);
+            
+        let m_transpose_ref = CSR::from_data(&[
+            &[10,10, 0, 1],
+            &[ 5, 8, 5, 2],
+            &[ 7, 5, 4, 7],
+            &[ 9, 9, 6, 9],
+            &[ 2, 3, 2, 2],
+        ]);
+
+        let m_transpose = m.transpose();
+        assert_eq!(m_transpose,m_transpose_ref);
+    }
+
+    #[test]
+    fn transpose_mxn() {
         let m = CSR::from_data(&[
             &[10,20, 0, 0, 0, 0],
             &[ 0,30, 0,40, 0, 0],
@@ -221,7 +317,6 @@ mod test {
             &[ 0, 0, 0, 0, 0,80],
             ]);
             
-        println!("\nCreate m_transpose_ref");
         let m_transpose_ref = CSR::from_data(&[
             &[10, 0, 0, 0],
             &[20,30, 0, 0],
@@ -231,9 +326,50 @@ mod test {
             &[ 0, 0, 0,80],
         ]);
 
-        println!("\nCreate m_transpose");
         let m_transpose = m.transpose();
-
         assert_eq!(m_transpose,m_transpose_ref);
+    }
+
+    #[test]
+    #[ignore]
+    fn display_mat() {
+        let m: CSR<f32> = CSR::from_data(&[
+            &[  4.0, 12.0,-16.0],
+            &[ 12.0, 37.0,-43.0],
+            &[-16.0,-43.0, 98.0],
+        ]);
+        println!("{:5}",m);
+    }
+
+    #[test]
+    fn cholesky_decomposition() {
+        
+        let m: CSR<f32> = CSR::from_data(&[
+            &[  4.0, 12.0,-16.0],
+            &[ 12.0, 37.0,-43.0],
+            &[-16.0,-43.0, 98.0],
+        ]);
+
+        let lower_l_ref: CSR<f32>  = CSR::from_data(&[
+            &[ 2.0,0.0,0.0],
+            &[ 6.0,1.0,0.0],
+            &[-8.0,5.0,3.0],
+        ]);
+        let upper_l_ref: CSR<f32>  = CSR::from_data(&[
+            &[2.0,6.0,-8.0],
+            &[0.0,1.0, 5.0],
+            &[0.0,0.0, 3.0],
+        ]);
+
+
+        // let (lower_l,upper_l) = m.cholesky_decomp();
+        let lower_l = m.cholesky_decomp().unwrap();
+        let upper_l = lower_l.transpose();
+
+        // println!("lower_l:\n{lower_l}");
+        // println!("\nlower_l_ref:\n{lower_l_ref}");
+
+        assert_eq!(lower_l, lower_l_ref);
+        assert_eq!(upper_l, upper_l_ref);
     }
 }
