@@ -170,7 +170,8 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug + std::ops::Add<T,Output=T>
                     let c = (*a)*b;
                     value = value + c;
                 }
-                result.insert_unchecked(value, row_index, col_index)
+                // result.insert_unchecked(value, row_index, col_index)
+                result.insert(value, row_index, col_index).unwrap();
             }
         }
         Ok(result.finalise())
@@ -189,11 +190,8 @@ impl Csr<f32> {
         let mut l = Self::new(self.col_count, self.row_count);
         for i in 0..self.row_count {
             for j in 0..(i+1) {
-                // println!("i={i},j={j}");
-                // println!("l (before):\n{l}");
                 let mut sum: f32 = 0.0;
                 for k in 0..j {
-                    // println!(">k={k}");
                     let a = if let Some(row) = l.get_row_complete(i) {
                         row[k] 
                     } else {
@@ -206,20 +204,15 @@ impl Csr<f32> {
                     };
                     sum += a * b;
                 }
-                // println!(">sum={sum}");
                 let val_to_insert;
                 if i==j {
                     val_to_insert = (self.get_row_complete(i).unwrap()[i]-sum).powf(0.5);
                 } else {
                     let temp = self.get_row_complete(i).unwrap()[j]-sum;
-                    // println!(">temp={temp}");
                     let a = l.get_row_complete(j).unwrap()[j];
-                    // println!(">a={a}");
                     val_to_insert = (1.0 / a) * temp;
                 }
-                // println!(">val_to_insert={val_to_insert}");
-                l.insert_unchecked(val_to_insert, i, j);
-                // println!("l (after):\n{l}");
+                l.insert(val_to_insert, i, j).unwrap();
             }
         }
         Ok(l.finalise())
@@ -499,5 +492,32 @@ mod test {
         // value. Existing 3 is just the NNZ added as part of finalisation.
         // maybe worth adding this as part of finalisation?
         //assert_eq!(m.row_index,vec![0,0,3,3]);
+    }
+
+    #[test]
+    fn test_nnz() {
+        let m = Csr::from_data(&[
+            &[5,2,1,3],
+            &[7,0,1,3],
+            &[0,1,0,0],
+            &[0,7,4,0],
+        ]);
+
+        let a = crate::dense::Dense::from_data(&[
+            &[1,0,3,4],
+            &[8,0,0,5]
+        ]);
+
+        let output_ref = Csr::from_data(&[
+            &[20,55],
+            &[22,71],
+            &[ 0,0],
+            &[12,0],
+        ]);
+
+        let output = m.mul_dense(&a).unwrap();
+        assert_eq!(output,output_ref);
+        assert_eq!(output.get_nnz(),5);
+
     }
 }
