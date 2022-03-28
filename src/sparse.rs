@@ -1,7 +1,7 @@
 use std::fmt;
 use crate::util::{GetDims,MatErr};
 
-#[derive(PartialEq)]
+#[derive(PartialEq,Clone)]
 pub struct Csr<T> {
     col_count: usize,
     row_count: usize,
@@ -43,7 +43,7 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug> Csr<T> {
     }
 
     /// adds the value of NNZ onto the end of the row_indexes
-    fn finalise(mut self) -> Self {
+    pub fn finalise(mut self) -> Self {
         if !self.is_finalised {
             self.is_finalised = true;
             self.row_index.push(self.v.len());
@@ -148,7 +148,7 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug> Csr<T> {
 }
 
 impl<T: Copy + Default + PartialEq + std::fmt::Debug + std::ops::Add<T,Output=T> + std::ops::Mul<T,Output=T>> Csr<T> {
-    pub fn mul(&self, rhs: crate::dense::Dense<T>) -> Result<Self,MatErr> {
+    pub fn mul_dense(&self, rhs: &crate::dense::Dense<T>) -> Result<Self,MatErr> {
         if self.col_count != rhs.get_dims().rows {
             return Err(MatErr::IncorrectDimensions)
         }
@@ -167,6 +167,10 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug + std::ops::Add<T,Output=T>
             }
         }
         Ok(result.finalise())
+    }
+
+    pub fn mul_sparse(&self, rhs: Self) -> Result<Self,MatErr> {
+        unimplemented!();
     }
 }
 
@@ -461,7 +465,7 @@ mod test {
             &[ 1, 5, 9],
         ]);
 
-        let output = s.mul(d).unwrap();
+        let output = s.mul_dense(&d).unwrap();
 
         assert_eq!(output,output_ref);
     }
