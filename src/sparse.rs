@@ -1,10 +1,11 @@
 use std::fmt;
-use crate::util::{GetDims,MatErr};
+use crate::util::{GetDims,MatDim,MatErr};
+use crate::dense::Dense;
+
 
 #[derive(PartialEq,Clone)]
 pub struct Csr<T> {
-    col_count: usize,
-    row_count: usize,
+    dims: MatDim,
     v: Vec<T>,
     col_index: Vec<usize>,
     row_index: Vec<usize>,
@@ -19,10 +20,9 @@ pub struct CsrEntry<T: std::fmt::Debug> {
 }
 
 impl<T: Copy + Default + PartialEq + std::fmt::Debug> Csr<T> {
-    pub fn new(col_count: usize, row_count: usize) -> Self {
+    pub fn new<D: Into<MatDim>>(dims: D) -> Self {
         Self {
-            col_count, 
-            row_count,
+            dims: dims.into(),
             v: Vec::new(),
             col_index: Vec::new(),
             row_index: Vec::new(),
@@ -35,13 +35,13 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug> Csr<T> {
     }
 
     pub fn get_density(&self) -> f32 {
-        self.v.len() as f32 / (self.row_count*self.col_count) as f32
+        self.v.len() as f32 / (self.dims.rows*self.dims.cols) as f32
     }
 
     pub fn from_data(data: &[&[T]]) -> Self {
         let rows = data.len();
         let cols = data[0].len();
-        let mut m = Self::new(cols,rows);
+        let mut m = Self::new((rows,cols));
         for (i,row) in data.iter().enumerate() {
             for (j,val) in row.iter().enumerate() {
                 m.insert(*val,i,j).unwrap();
@@ -121,15 +121,15 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug> Csr<T> {
             prev_col = *col+1;
             return_vec.push(*entry)
         }
-        for _ in prev_col..(self.col_count) {
+        for _ in prev_col..(self.dims.cols) {
             return_vec.push(T::default());
         }
         Some(return_vec)
     }
 
     pub fn transpose(&self) -> Self {
-        let mut t = Self::new(self.row_count, self.col_count);
-        for col_index in 0..self.col_count {
+        let mut t = Self::new(self.dims.transpose());
+        for col_index in 0..self.dims.cols {
             for entry_index in 0..self.v.len() {
                 // for each col index, find any entries with matching col index
                 if col_index==self.col_index[entry_index] {
@@ -156,6 +156,13 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug> Csr<T> {
         (self,t)
     }
 }
+
+impl<T> GetDims for Csr<T> {
+    fn get_dims(&self) -> MatDim {
+        self.dims
+    }
+}
+
 
 impl<T: Copy + Default + PartialEq + std::fmt::Debug + std::ops::Add<T,Output=T> + std::ops::Mul<T,Output=T>> Csr<T> {
     pub fn mul_dense(&self, rhs: &crate::dense::Dense<T>) -> Result<Self,MatErr> {
@@ -195,11 +202,11 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug + std::ops::Add<T,Output=T>
 
 impl Csr<f32> {
     pub fn cholesky_decomp(&self) -> Result<Self,MatErr> {
-        if self.row_count != self.col_count {
+        if self.dims.rows != self.dims.cols {
             return Err(MatErr::NonSquareMatrix)
         }
-        let mut l = Self::new(self.col_count, self.row_count);
-        for i in 0..self.row_count {
+        let mut l = Self::new(self.dims);
+        for i in 0..self.dims.rows {
             for j in 0..(i+1) {
                 let mut sum: f32 = 0.0;
                 for k in 0..j {
@@ -233,14 +240,14 @@ impl Csr<f32> {
 impl<T: fmt::Display + Copy + Default + PartialEq + fmt::Debug> fmt::Display for Csr<T> {
     // This trait requires `fmt` with this exact signature.
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        for row_index in 0..self.row_count {
+        for row_index in 0..self.dims.rows {
             write!(f, "|").unwrap();
             if let Some(row) = self.get_row_complete(row_index) {
                 for entry in row {
                     write!(f, "{:>5}", entry).unwrap();
                 }
             } else {
-                for _ in 0..self.col_count {
+                for _ in 0..self.dims.cols {
                     write!(f, "{:>5}", T::default()).unwrap();
                 }
             }
@@ -327,7 +334,7 @@ mod test {
     #[test]
     fn get_row_by_index_1x1() -> Result<(),String> {
 
-        let mut m = Csr::<f32>::new(5, 5);
+        let mut m = Csr::<f32>::new((5, 5));
         m.insert_unchecked(2.0, 0, 0);
         let v = m.get_row_complete(0).unwrap();
         if v[0] != 2.0 {
@@ -454,7 +461,7 @@ mod test {
 
     #[test]
     fn test_dense_mul() {
-        let d = crate::dense::Dense::from_data(&[
+        let d = Dense::from_data(&[
             &[ 1, 2, 3, 4],
             &[ 5, 6, 7, 8],
             &[ 9,10,11,12]
@@ -514,7 +521,7 @@ mod test {
             &[0,7,4,0],
         ]);
 
-        let a = crate::dense::Dense::from_data(&[
+        let a = Dense::from_data(&[
             &[1,0,3,4],
             &[8,0,0,5]
         ]);
