@@ -34,6 +34,10 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug> Csr<T> {
         *self.row_index.last().unwrap_or(&0)
     }
 
+    pub fn get_density(&self) -> f32 {
+        self.v.len() as f32 / (self.row_count*self.col_count) as f32
+    }
+
     pub fn from_data(data: &[&[T]]) -> Self {
         let rows = data.len();
         let cols = data[0].len();
@@ -151,7 +155,6 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug> Csr<T> {
         let t = self.transpose();
         (self,t)
     }
-
 }
 
 impl<T: Copy + Default + PartialEq + std::fmt::Debug + std::ops::Add<T,Output=T> + std::ops::Mul<T,Output=T>> Csr<T> {
@@ -179,6 +182,14 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug + std::ops::Add<T,Output=T>
 
     pub fn mul_sparse(&self, rhs: Self) -> Result<Self,MatErr> {
         unimplemented!();
+    }
+
+    pub fn sum_elements(&self) -> T {
+        let mut sum = T::default();
+        for v in &self.v {
+            sum = sum + *v;
+        }
+        sum
     }
 }
 
