@@ -27,7 +27,8 @@ fn bench(c: &mut Criterion) {
         }
 
         bencher.iter_with_large_drop(|| {
-            let _output = a.mul_dense(&x).unwrap();
+            let output = a.mul_dense(&x).unwrap();
+            assert_eq!(output.get_nnz(),10000)
         })
     });
 }

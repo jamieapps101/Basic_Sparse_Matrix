@@ -30,6 +30,10 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug> Csr<T> {
         }
     }
 
+    pub fn get_nnz(&self) -> usize {
+        *self.row_index.last().unwrap_or(&0)
+    }
+
     pub fn from_data(data: &[&[T]]) -> Self {
         let rows = data.len();
         let cols = data[0].len();
