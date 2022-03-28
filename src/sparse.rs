@@ -36,7 +36,7 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug> Csr<T> {
         let mut m = Self::new(cols,rows);
         for (i,row) in data.iter().enumerate() {
             for (j,val) in row.iter().enumerate() {
-                m.insert_unchecked(*val,i,j);
+                m.insert(*val,i,j).unwrap();
             }
         }
         m.finalise()
@@ -58,7 +58,11 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug> Csr<T> {
             return Err(MatErr::MatrixFinalised)
         }
         // todo: add more checks here
-        self.insert_unchecked(value, row, col);
+
+        // silently ignore trying to add values of default
+        if value != T::default() {
+            self.insert_unchecked(value, row, col);
+        }
         Ok(())
     }
      
@@ -66,16 +70,15 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug> Csr<T> {
     /// same as above, but does not do the checking that data is in order
     /// treats default value of T as the value to not store; 0 for most types
     fn insert_unchecked(&mut self, value: T, row: usize, col: usize) {
-        if value != T::default() {
             self.v.push(value);
             self.col_index.push(col);
-            // strictly speaking the new row index should always be less than or equal to
-            // that can be tested and dealt with in the *insert* function.
-            // let current_recorded_row = self.row_index.len()-1;
-            if self.row_index.len() == 0 || row > self.row_index.len()-1 {
+            let last_row_index = *self.row_index.last().unwrap_or(&0);
+            if row >= self.row_index.len() {
+                for _ in self.row_index.len()..row {
+                    self.row_index.push(last_row_index);
+                }
                 self.row_index.push(self.v.len()-1)
             }
-        }
     }
 
     pub fn get_row_compact(&self, index: usize) -> Option<Vec<CsrEntry<&T>>> {
@@ -468,5 +471,29 @@ mod test {
         let output = s.mul_dense(&d).unwrap();
 
         assert_eq!(output,output_ref);
+    }
+
+    #[test]
+    fn csr_with_empty_row() {
+        let a = 11;
+        let b = 12;
+        let c = 13;
+
+        let m = Csr::from_data(&[
+            &[0,0,0],
+            &[a,b,c],
+            &[0,0,0],
+        ]);
+
+        assert_eq!(m.is_finalised,true);
+        assert_eq!(m.v,vec![a,b,c]);
+        assert_eq!(m.col_index,vec![0,1,2]);
+        assert_eq!(m.row_index,vec![0,0,3]);
+        // todo
+        // maybe should be as below, however as no elements are 
+        // added on the 3rd row, no need to point to the 3rd indexed
+        // value. Existing 3 is just the NNZ added as part of finalisation.
+        // maybe worth adding this as part of finalisation?
+        //assert_eq!(m.row_index,vec![0,0,3,3]);
     }
 }
