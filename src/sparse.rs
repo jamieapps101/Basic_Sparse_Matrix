@@ -56,6 +56,28 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug> Csr<T> {
         self.v.len() as f32 / (self.dims.rows*self.dims.cols) as f32
     }
 
+    pub fn get_val_at(&self, at: MatDim) -> Option<&T> {
+        let row_start = self.row_index[at.rows];
+        let row_end = self.row_index[at.rows+1];
+        for (local_index,col_index) in self.col_index[row_start..row_end].iter().enumerate() {
+            if col_index == &at.rows {
+                return Some(&self.v[row_start+local_index])
+            }
+        }
+        None
+    }
+
+    pub fn get_mut_val_at(&mut self, at: MatDim) -> Option<&mut T> {
+        let row_start = self.row_index[at.rows];
+        let row_end = self.row_index[at.rows+1];
+        for (local_index,col_index) in self.col_index[row_start..row_end].iter().enumerate() {
+            if col_index == &at.rows {
+                return Some(&mut self.v[row_start+local_index])
+            }
+        }
+        None
+    }
+
     pub fn from_data(data: &[&[T]]) -> Self {
         let rows = data.len();
         let cols = data[0].len();
