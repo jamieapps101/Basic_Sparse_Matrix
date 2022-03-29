@@ -94,9 +94,7 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug> Csr<T> {
 
     pub fn get_row_compact(&self, index: usize) -> Option<Vec<CsrEntry<&T>>> {
         let row_start = self.row_index[index];
-        println!("row_start={row_start}");
         let row_end = self.row_index[index+1];
-        println!("row_end={row_end}");
         Some(self.col_index[row_start..row_end].iter().zip(self.v[row_start..row_end].iter()).map( | (col_index,v) | {
             CsrEntry { v, col_index: *col_index, row_index: index }
         }).collect())
@@ -108,7 +106,6 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug> Csr<T> {
         if index >= self.row_index.len() { return None }
 
         let row_start = self.row_index[index];
-        println!("row_start={row_start}");
         let index_with_offset = index+1;
         let row_end;
         if self.row_index.len() == index_with_offset {
@@ -116,13 +113,6 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug> Csr<T> {
         } else {
             row_end = self.row_index[index+1];
         }
-        println!("row_end={row_end}");
-        
-        // if row_end-row_start == 0 {
-
-        // } else {
-
-            // }
         let mut return_vec = Vec::with_capacity(self.dims.cols);
         let mut prev_col = 0;
         for (col,entry) in self.col_index[row_start..row_end].iter().zip(self.v[row_start..row_end].iter()) {
@@ -210,16 +200,14 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug + std::ops::Add<T,Output=T>
         // let mut self_row_index = 0;
         let mut row_index = 0;
         loop {
-            println!("row_index={row_index}");
             let self_row = self.get_row_compact(row_index).unwrap();
             let rhs_row = rhs.get_row_compact(row_index).unwrap();
             let mut self_entry_index = 0;
             let mut rhs_entry_index = 0;
             loop {
-                let self_has_entry = self_row.len() > 0 && self_row.len()-1 > self_entry_index;
-                let rhs_has_entry = rhs_row.len() > 0 && rhs_row.len()-1 > rhs_entry_index;
+                let self_has_entry = self_row.len() > 0 && self_row.len() > self_entry_index;
+                let rhs_has_entry = rhs_row.len() > 0 && rhs_row.len() > rhs_entry_index;
                 if self_has_entry && rhs_has_entry {
-                    println!("A");
                     let self_entry = &self_row[self_entry_index];
                     let rhs_entry  = &rhs_row[rhs_entry_index];
                     if self_entry.col_index > rhs_entry.col_index {
@@ -237,17 +225,14 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug + std::ops::Add<T,Output=T>
                     }
 
                 } else if self_has_entry && !rhs_has_entry {
-                    println!("B");
                     let entry = &self_row[self_entry_index];
                     output.insert(*entry.v, entry.row_index, entry.col_index).unwrap();
                     self_entry_index+=1;
                 } else if !self_has_entry && rhs_has_entry {
-                    println!("C");
                     let entry = &rhs_row[rhs_entry_index];
                     output.insert(*entry.v, entry.row_index, entry.col_index).unwrap();
                     rhs_entry_index+=1;
                 } else {
-                    println!("D");
                     // ie !self_has_entry && !rhs_has_entry
                     break;
                 }
@@ -257,7 +242,7 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug + std::ops::Add<T,Output=T>
                 break;
             }
         }
-        Ok(output)
+        Ok(output.finalise())
     } 
 
     pub fn mul_sparse(&self, rhs: Self) -> Result<Self,MatErr> {
@@ -674,7 +659,6 @@ mod test {
 
 
     #[test]
-    #[ignore]
     fn add_sparse() {
         let a = Csr::from_data(&[
             &[5,6,7,8,9],
@@ -682,6 +666,8 @@ mod test {
             &[0,0,0,0,1],
             &[1,0,0,0,0],
         ]);
+
+        println!("a:\n{}",a);
 
         let b = Csr::from_data(&[
             &[9,8,7,6,5],
