@@ -30,6 +30,24 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug> Csr<T> {
         }
     }
 
+    pub fn eye<D: Into<MatDim>>(dims: D, value: T) -> Result<Self,MatErr> {
+        let dims = dims.into();
+        if dims.cols != dims.rows {
+            return Err(MatErr::IncorrectDimensions)
+        }
+        let mut m = Self {
+            dims,
+            v: Vec::new(),
+            col_index: Vec::new(),
+            row_index: vec![0],
+            is_finalised: false,
+        };
+        for n in 0..dims.cols {
+            m.insert_unchecked(value, n, n);
+        }
+        Ok(m)
+    }
+
     pub fn get_nnz(&self) -> usize {
         *self.row_index.last().unwrap_or(&0)
     }
