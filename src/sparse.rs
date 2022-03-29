@@ -76,7 +76,7 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug> Csr<T> {
         }
         self
     }
-  
+
     /// should only be used to insert data in order of appearance, col by col, row by row
     pub fn insert(&mut self, value: T, row: usize, col: usize) ->  Result<(), MatErr> {
         if self.is_finalised {
@@ -90,7 +90,7 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug> Csr<T> {
         }
         Ok(())
     }
-     
+
     /// same as above, but does not do the checking that data is in order
     /// treats default value of T as the value to not store; 0 for most types
     fn insert_unchecked(&mut self, value: T, row: usize, col: usize) {
@@ -136,7 +136,7 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug> Csr<T> {
                 for _ in prev_col..*col {
                     return_vec.push(T::default());
                 }
-            }    
+            }
             prev_col = *col+1;
             return_vec.push(*entry)
         }
@@ -224,7 +224,7 @@ impl<T> GetDims for Csr<T> {
 }
 
 
-impl<T: Copy + Default + PartialEq + std::fmt::Debug + std::ops::Add<T,Output=T> + std::ops::Mul<T,Output=T>> Csr<T> {
+impl<T: Copy + Default + PartialEq + std::fmt::Debug + std::ops::Add<T,Output=T> + std::ops::Sub<T,Output=T> + std::ops::Mul<T,Output=T>> Csr<T> {
     pub fn mul_dense(&self, rhs: &Dense<T>) -> Result<Self,MatErr> {
         if self.dims.cols != rhs.get_dims().rows {
             return Err(MatErr::IncorrectDimensions)
@@ -300,7 +300,62 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug + std::ops::Add<T,Output=T>
             }
         }
         Ok(output.finalise())
-    } 
+    }
+
+    pub fn sub_sparse(&self, rhs: &Self) -> Result<Self,MatErr> {
+        if self.get_dims() != rhs.get_dims() {
+            return Err(MatErr::IncorrectDimensions)
+        }
+        let mut output = Self::new(self.dims);
+
+        // create two iterators over the elements which can asyncronously advance
+        // let mut self_row_index = 0;
+        let mut row_index = 0;
+        loop {
+            let self_row = self.get_row_compact(row_index).unwrap();
+            let rhs_row = rhs.get_row_compact(row_index).unwrap();
+            let mut self_entry_index = 0;
+            let mut rhs_entry_index = 0;
+            loop {
+                let self_has_entry = self_row.len() > 0 && self_row.len() > self_entry_index;
+                let rhs_has_entry = rhs_row.len() > 0 && rhs_row.len() > rhs_entry_index;
+                if self_has_entry && rhs_has_entry {
+                    let self_entry = &self_row[self_entry_index];
+                    let rhs_entry  = &rhs_row[rhs_entry_index];
+                    if self_entry.col_index > rhs_entry.col_index {
+                        output.insert(T::default()-*rhs_entry.v, rhs_entry.row_index, rhs_entry.col_index).unwrap();
+                        rhs_entry_index+=1;
+                    } else if self_entry.col_index < rhs_entry.col_index {
+                        output.insert(*self_entry.v, self_entry.row_index, self_entry.col_index).unwrap();
+                        self_entry_index+=1;
+                    } else {
+                        // self_entry.col_index == rhs_entry.col_index
+                        rhs_entry_index+=1;
+                        self_entry_index+=1;
+                        let v = *self_entry.v - *rhs_entry.v;
+                        output.insert(v, self_entry.row_index, self_entry.col_index).unwrap();
+                    }
+
+                } else if self_has_entry && !rhs_has_entry {
+                    let entry = &self_row[self_entry_index];
+                    output.insert(*entry.v, entry.row_index, entry.col_index).unwrap();
+                    self_entry_index+=1;
+                } else if !self_has_entry && rhs_has_entry {
+                    let entry = &rhs_row[rhs_entry_index];
+                    output.insert(T::default()-*entry.v, entry.row_index, entry.col_index).unwrap();
+                    rhs_entry_index+=1;
+                } else {
+                    // ie !self_has_entry && !rhs_has_entry
+                    break;
+                }
+            }
+            row_index+=1;
+            if row_index == self.dims.rows {
+                break;
+            }
+        }
+        Ok(output.finalise())
+    }
 
     pub fn mul_sparse(&self, rhs: Self) -> Result<Self,MatErr> {
         unimplemented!();
@@ -326,7 +381,7 @@ impl Csr<f32> {
                 let mut sum: f32 = 0.0;
                 for k in 0..j {
                     let a = if let Some(row) = l.get_row_complete(i) {
-                        row[k] 
+                        row[k]
                     } else {
                         0.0
                     };
@@ -382,7 +437,7 @@ impl<T: fmt::Display + Copy + Default + PartialEq + fmt::Debug > fmt::Debug for 
 }
 
 
-#[cfg(test)] 
+#[cfg(test)]
 mod test {
     use super::*;
     // check v and col_index are of length NNZ
@@ -439,7 +494,7 @@ mod test {
 
         assert_eq!(m.get_row_complete(2), Some(vec![ 0, 0,50,60,70, 0]));
 
-        assert_eq!(m.get_row_compact(2), Some(vec![ 
+        assert_eq!(m.get_row_compact(2), Some(vec![
             CsrEntry {v: &50, row_index: 2, col_index: 2},
             CsrEntry {v: &60, row_index: 2, col_index: 3},
             CsrEntry {v: &70, row_index: 2, col_index: 4},
@@ -457,12 +512,12 @@ mod test {
         assert_eq!(m.get_col_complete(1), Some(vec![ 20, 30, 0, 0]));
         assert_eq!(m.get_col_complete(4), Some(vec![ 0, 0, 70, 0]));
 
-        assert_eq!(m.get_col_compact(1), Some(vec![ 
+        assert_eq!(m.get_col_compact(1), Some(vec![
             CsrEntry {v: &20, row_index: 0, col_index: 1},
             CsrEntry {v: &30, row_index: 1, col_index: 1},
         ]));
 
-        assert_eq!(m.get_col_compact(4), Some(vec![ 
+        assert_eq!(m.get_col_compact(4), Some(vec![
             CsrEntry {v: &70, row_index: 2, col_index: 4},
         ]));
     }
@@ -483,7 +538,7 @@ mod test {
         assert_eq!(m.get_row_complete(2), Some(vec![ 0,0,0,0,1 ]));
         assert_eq!(m.get_row_complete(3), Some(vec![ 1,0,0,0,0 ]));
 
-        assert_eq!(m.get_row_compact(0), Some(vec![ 
+        assert_eq!(m.get_row_compact(0), Some(vec![
             CsrEntry {v: &5, row_index: 0, col_index: 0},
             CsrEntry {v: &6, row_index: 0, col_index: 1},
             CsrEntry {v: &7, row_index: 0, col_index: 2},
@@ -502,7 +557,7 @@ mod test {
         ]));
 
     }
-    
+
     #[test]
     fn get_row_by_index_single() -> Result<(),String> {
 
@@ -533,7 +588,7 @@ mod test {
             &[ 0,5,4,6,2],
             &[ 1,2,7,9,2],
             ]);
-            
+
         let m_transpose_ref = Csr::from_data(&[
             &[10,10, 0, 1],
             &[ 5, 8, 5, 2],
@@ -554,7 +609,7 @@ mod test {
             &[ 0, 0,50,60,70, 0],
             &[ 0, 0, 0, 0, 0,80],
             ]);
-            
+
         let m_transpose_ref = Csr::from_data(&[
             &[10, 0, 0, 0],
             &[20,30, 0, 0],
@@ -581,7 +636,7 @@ mod test {
 
     #[test]
     fn cholesky_decomposition_0() {
-        
+
         let m: Csr<f32> = Csr::from_data(&[
             &[  4.0, 12.0,-16.0],
             &[ 12.0, 37.0,-43.0],
@@ -677,7 +732,7 @@ mod test {
         assert_eq!(m.col_index,vec![0,1,2]);
         assert_eq!(m.row_index,vec![0,0,3]);
         // todo
-        // maybe should be as below, however as no elements are 
+        // maybe should be as below, however as no elements are
         // added on the 3rd row, no need to point to the 3rd indexed
         // value. Existing 3 is just the NNZ added as part of finalisation.
         // maybe worth adding this as part of finalisation?
@@ -701,7 +756,7 @@ mod test {
         assert_eq!(m.col_index,vec![0,2,2,2,3,4,3]);
         assert_eq!(m.row_index,vec![0,2,3,3,3,6,6,7]);
         // todo
-        // maybe should be as below, however as no elements are 
+        // maybe should be as below, however as no elements are
         // added on the 3rd row, no need to point to the 3rd indexed
         // value. Existing 3 is just the NNZ added as part of finalisation.
         // maybe worth adding this as part of finalisation?
@@ -762,6 +817,35 @@ mod test {
         ]);
 
         let c = a.add_sparse(&b).unwrap();
+        assert_eq!(c,c_ref);
+    }
+
+    #[test]
+    fn sub_sparse() {
+        let a = Csr::from_data(&[
+            &[5,6,7,8,9],
+            &[0,0,0,0,0],
+            &[0,0,0,0,1],
+            &[1,0,0,0,0],
+        ]);
+
+        println!("a:\n{}",a);
+
+        let b = Csr::from_data(&[
+            &[9,8,7,6,5],
+            &[0,0,0,0,0],
+            &[1,0,0,0,0],
+            &[1,0,0,0,0],
+        ]);
+
+        let c_ref = Csr::from_data(&[
+            &[-4,-2,0,2,4],
+            &[0,0,0,0,0],
+            &[-1,0,0,0,1],
+            &[0,0,0,0,0],
+        ]);
+
+        let c = a.sub_sparse(&b).unwrap();
         assert_eq!(c,c_ref);
     }
 }
