@@ -58,8 +58,7 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug> Csr<T> {
         }
         self
     }
-
-     
+  
     /// should only be used to insert data in order of appearance, col by col, row by row
     pub fn insert(&mut self, value: T, row: usize, col: usize) ->  Result<(), MatErr> {
         if self.is_finalised {
@@ -74,7 +73,6 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug> Csr<T> {
         Ok(())
     }
      
-
     /// same as above, but does not do the checking that data is in order
     /// treats default value of T as the value to not store; 0 for most types
     fn insert_unchecked(&mut self, value: T, row: usize, col: usize) {
@@ -157,6 +155,47 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug> Csr<T> {
     pub fn pair_with_tranpose(self) -> (Self,Self) {
         let t = self.transpose();
         (self,t)
+    }
+
+    /// This is an expensive function for a Csr style matrix
+    pub fn get_col_compact(&self, index: usize) -> Option<Vec<CsrEntry<&T>>> {
+        let mut return_vec = Vec::new();
+        let mut row_count = 0;
+        for i in 0..self.v.len() {
+            while self.row_index[row_count] == i {
+                row_count +=1;
+            }
+            if self.col_index[i] == index {
+                return_vec.push(CsrEntry{
+                    v: &self.v[i],
+                    col_index: index,
+                    row_index: row_count-1
+                })
+            }
+        }
+        return Some(return_vec)
+    }
+
+    /// This is an expensive function for a Csr style matrix
+    pub fn get_col_complete(&self, index: usize) -> Option<Vec<T>> {
+        let mut return_vec = Vec::new();
+        let mut row_count = 0;
+        for i in 0..self.v.len() {
+            if self.col_index[i] == index {
+                return_vec.push(self.v[i]);
+            } else {
+                while self.row_index[row_count] == i {
+                    row_count +=1;
+                    if i != 0 {
+                        return_vec.push(T::default());
+                    }
+                }
+            }
+            while self.row_index[row_count] == i {
+                row_count +=1;
+            }
+        }
+        return Some(return_vec)
     }
 }
 
@@ -385,6 +424,27 @@ mod test {
         assert_eq!(m.get_row_compact(2), Some(vec![ 
             CsrEntry {v: &50, row_index: 2, col_index: 2},
             CsrEntry {v: &60, row_index: 2, col_index: 3},
+            CsrEntry {v: &70, row_index: 2, col_index: 4},
+        ]));
+    }
+
+    #[test]
+    fn get_col_by_index_0() {
+        let m = Csr::from_data(&[
+            &[10,20, 0, 0, 0, 0],
+            &[ 0,30, 0,40, 0, 0],
+            &[ 0, 0,50,60,70, 0],
+            &[ 0, 0, 0, 0, 0,80],
+        ]);
+        assert_eq!(m.get_col_complete(1), Some(vec![ 20, 30, 0, 0]));
+        assert_eq!(m.get_col_complete(4), Some(vec![ 0, 0, 70, 0]));
+
+        assert_eq!(m.get_col_compact(1), Some(vec![ 
+            CsrEntry {v: &20, row_index: 0, col_index: 1},
+            CsrEntry {v: &30, row_index: 1, col_index: 1},
+        ]));
+
+        assert_eq!(m.get_col_compact(4), Some(vec![ 
             CsrEntry {v: &70, row_index: 2, col_index: 4},
         ]));
     }
