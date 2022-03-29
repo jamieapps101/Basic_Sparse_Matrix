@@ -215,6 +215,19 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug> Csr<T> {
         }
         return Some(return_vec)
     }
+
+    /// This is an expensive function for a Csr style matrix
+    pub fn get_col(&self, index: usize) -> Option<Self> {
+        if let Some(col) = self.get_col_compact(index) {
+            let mut m = Self::new((self.dims.rows,1));
+            for entry in col {
+                m.insert_unchecked(*entry.v, entry.row_index, 0);
+            }
+            Some(m.finalise())
+        } else {
+            None
+        }
+    }
 }
 
 impl<T> GetDims for Csr<T> {
@@ -520,6 +533,15 @@ mod test {
         assert_eq!(m.get_col_compact(4), Some(vec![
             CsrEntry {v: &70, row_index: 2, col_index: 4},
         ]));
+
+        let c = m.get_col(3).unwrap();
+        let c_ref = Csr::from_data(&[
+            &[ 0],
+            &[40],
+            &[60],
+            &[ 0],
+        ]);
+        assert_eq!(c,c_ref)
     }
 
     #[test]
