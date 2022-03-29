@@ -22,5 +22,9 @@ General
 TODO:
 - Sparse/Sparse multiplication
 - Dense/Dense multiplication
+- Addition of all kinds
+- identity matrices.
+- sparse element modification
+- non-monotonic sparse element addition.
 - Inplace operations to save memory/allocation time
 - Eigendecomposition
