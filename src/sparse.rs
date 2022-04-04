@@ -94,6 +94,10 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug> Csr<T> {
     pub fn finalise(mut self) -> Self {
         if !self.is_finalised {
             self.is_finalised = true;
+            let required_spacers = self.dims.rows-self.row_index.len();
+            for _ in 0..required_spacers {
+                self.row_index.push(self.v.len());
+            }
             self.row_index.push(self.v.len());
         }
         self
@@ -804,13 +808,7 @@ mod test {
         assert_eq!(m.is_finalised,true);
         assert_eq!(m.v,vec![a,b,c]);
         assert_eq!(m.col_index,vec![0,1,2]);
-        assert_eq!(m.row_index,vec![0,0,3]);
-        // todo
-        // maybe should be as below, however as no elements are
-        // added on the 3rd row, no need to point to the 3rd indexed
-        // value. Existing 3 is just the NNZ added as part of finalisation.
-        // maybe worth adding this as part of finalisation?
-        //assert_eq!(m.row_index,vec![0,0,3,3]);
+        assert_eq!(m.row_index,vec![0,0,3,3]);
     }
 
     #[test]
