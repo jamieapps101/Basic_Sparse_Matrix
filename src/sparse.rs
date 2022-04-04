@@ -45,7 +45,7 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug> Csr<T> {
         for n in 0..dims.cols {
             m.insert_unchecked(value, n, n);
         }
-        Ok(m)
+        Ok(m.finalise())
     }
 
     pub fn get_nnz(&self) -> usize {
@@ -393,7 +393,37 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug + std::ops::Add<T,Output=T>
     }
 
     pub fn mul_sparse(&self, rhs: Self) -> Result<Self,MatErr> {
-        unimplemented!();
+        let mut result = Self::new((self.dims.rows,rhs.dims.cols));
+        for row_index in 0..self.dims.rows {
+            let row = self.get_row_compact(row_index).unwrap();
+            for col_index in 0..rhs.dims.cols {
+                let col = rhs.get_col_compact(col_index).unwrap();
+                let mut row_position = 0;
+                let mut col_position = 0;
+                let mut val = T::default();
+                loop {
+                    if row[row_position].col_index == col[col_position].row_index {
+                        let t = *row[row_position].v * *col[col_position].v;
+                        val = val + t;
+                        row_position += 1;
+                        col_position += 1;
+                    } else if row[row_position].col_index > col[col_position].row_index {
+                        col_position += 1;
+                    } else if row[row_position].col_index < col[col_position].row_index {
+                        row_position += 1;
+                    } else {
+                        unreachable!();
+                    }
+
+                    if row_position == row.len() || col_position == col.len() {
+                        break
+                    }
+                }
+                result.insert(val, row_index, col_index).unwrap();
+            }
+        }
+
+        Ok(result.finalise())
     }
 
     pub fn sum_elements(&self) -> T {
@@ -892,4 +922,54 @@ mod test {
         let c = a.sub_sparse(&b).unwrap();
         assert_eq!(c,c_ref);
     }
+
+    #[test]
+    fn sparse_multiplication() {
+        let a = Csr::from_data(&[
+            &[1.0,2.0,3.0],
+            &[4.0,5.0,6.0],
+            &[7.0,8.0,9.0],
+        ]);
+
+        let b = Csr::eye((3,3), 1.0).unwrap();
+        // println!("b:\n{b}");
+
+        let c = a.mul_sparse(b).unwrap();
+
+        let c_ref = Csr::from_data(&[
+            &[1.0,2.0,3.0],
+            &[4.0,5.0,6.0],
+            &[7.0,8.0,9.0],
+        ]);
+
+        // println!("c:\n{c}");
+        assert_eq!(c,c_ref);
+    }
+
+    #[test]
+    fn qr_decomp() {
+        let a = Csr::from_data(&[
+            &[ 12.0,-51.0,  4.0],
+            &[  6.0,167.0,-68.0],
+            &[ -4.0, 24.0,-41.0],
+        ]);
+
+        let (q,r) = a.qr_decomp();
+
+        let q_ref = Csr::from_data(&[
+            &[ 0.8571,-0.3943,-0.3314],
+            &[ 0.4286, 0.9029, 0.0343],
+            &[-0.2857, 0.1714, 0.9429],
+        ]);
+
+        let r_ref = Csr::from_data(&[
+            &[ 14.0,  21.0, -14.0],
+            &[  0.0, 175.0, -70.0],
+            &[  0.0,   0.0,  35.0],
+        ]);
+
+        assert_eq!(q,q_ref);
+        assert_eq!(r,r_ref);
+    }
+
 }
