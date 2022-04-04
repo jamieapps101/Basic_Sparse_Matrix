@@ -437,9 +437,22 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug + std::ops::Add<T,Output=T>
         }
         sum
     }
+
+    pub fn mul_scalar(&self, s: T) -> Self {
+        let mut output = self.clone();
+        output.v.iter_mut().for_each(|v|{
+            *v = *v*s;
+        });
+
+        output
+    }
 }
 
 impl Csr<f32> {
+    pub fn l2_norm(&self) -> f32 {
+        self.v.iter().map(|v| v.powi(2)).sum::<f32>().powf(0.5)
+    }
+
     pub fn cholesky_decomp(&self) -> Result<Self,MatErr> {
         if self.dims.rows != self.dims.cols {
             return Err(MatErr::NonSquareMatrix)
