@@ -9,7 +9,10 @@ pub struct Csr<T> {
     v: Vec<T>,
     col_index: Vec<usize>,
     row_index: Vec<usize>,
-    is_finalised: bool
+    is_finalised: bool,
+
+    iter_v_index: usize,
+    iter_row_index: usize
 }
 
 #[derive(PartialEq, Debug)]
@@ -17,6 +20,35 @@ pub struct CsrEntry<T: std::fmt::Debug> {
     pub v: T,
     pub col_index: usize,
     pub row_index: usize
+}
+
+impl<T: std::fmt::Debug> From<(T,usize,usize)> for CsrEntry<T> {
+    fn from(e: (T,usize,usize)) -> Self {
+        CsrEntry { v: e.0, row_index: e.1, col_index: e.2 }
+    }
+}
+
+impl<T: std::fmt::Debug + Copy> Iterator for Csr<T> {
+    type Item = CsrEntry<T>;
+    fn next(&mut self) -> Option<Self::Item> {
+
+        if self.iter_v_index == self.v.len() {
+            return None
+        }
+
+        while self.row_index[self.iter_row_index] == self.iter_v_index {
+            self.iter_row_index+=1;
+        }
+
+        let v = self.v[self.iter_v_index];
+        let col_index = self.col_index[self.iter_v_index];
+        let row_index = self.iter_row_index-1;
+
+
+        self.iter_v_index += 1;
+
+        Some(CsrEntry { v, col_index, row_index })
+    }
 }
 
 impl<T: Copy + Default + PartialEq + std::fmt::Debug> Csr<T> {
@@ -27,6 +59,8 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug> Csr<T> {
             col_index: Vec::new(),
             row_index: vec![0],
             is_finalised: false,
+            iter_v_index:   0,
+            iter_row_index: 0
         }
     }
 
@@ -41,6 +75,8 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug> Csr<T> {
             col_index: Vec::new(),
             row_index: vec![0],
             is_finalised: false,
+            iter_v_index:   0,
+            iter_row_index: 0
         };
         for n in 0..dims.cols {
             m.insert_unchecked(value, n, n);
@@ -94,6 +130,9 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug> Csr<T> {
     pub fn finalise(mut self) -> Self {
         if !self.is_finalised {
             self.is_finalised = true;
+            if self.dims.rows < self.row_index.len() {
+                panic!("big eek")
+            }
             let required_spacers = self.dims.rows-self.row_index.len();
             for _ in 0..required_spacers {
                 self.row_index.push(self.v.len());
@@ -135,8 +174,15 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug> Csr<T> {
     }
 
     pub fn get_row_compact(&self, index: usize) -> Option<Vec<CsrEntry<&T>>> {
+        assert!(self.is_finalised);
         let row_start = self.row_index[index];
-        let row_end = self.row_index[index+1];
+
+        let row_end;
+        if index == self.row_index.len()-1 {
+            row_end = self.v.len();
+        } else {
+            row_end = self.row_index[index+1];
+        }
         Some(self.col_index[row_start..row_end].iter().zip(self.v[row_start..row_end].iter()).map( | (col_index,v) | {
             CsrEntry { v, col_index: *col_index, row_index: index }
         }).collect())
@@ -288,6 +334,10 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug> Csr<T> {
 
         Ok(submatrix.finalise())
     }
+
+    pub fn reset_iter(&mut self) {
+        self.iter_row_index = 0; self.iter_v_index = 0;
+    }
 }
 
 impl<T> GetDims for Csr<T> {
@@ -385,6 +435,7 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug + std::ops::Add<T,Output=T>
         // let mut self_row_index = 0;
         let mut row_index = 0;
         loop {
+            println!("row_index: {row_index}");
             let self_row = self.get_row_compact(row_index).unwrap();
             let rhs_row = rhs.get_row_compact(row_index).unwrap();
             let mut self_entry_index = 0;
@@ -530,11 +581,11 @@ impl<T: fmt::Display + Copy + Default + PartialEq + fmt::Debug> fmt::Display for
             write!(f, "|").unwrap();
             if let Some(row) = self.get_row_complete(row_index) {
                 for entry in row {
-                    write!(f, "{:>5}", entry).unwrap();
+                    write!(f, "{:>5} ", entry).unwrap();
                 }
             } else {
                 for _ in 0..self.dims.cols {
-                    write!(f, "{:>5}", T::default()).unwrap();
+                    write!(f, "{:>5} ", T::default()).unwrap();
                 }
             }
             write!(f, "|\n").unwrap();
@@ -545,6 +596,7 @@ impl<T: fmt::Display + Copy + Default + PartialEq + fmt::Debug> fmt::Display for
 
 impl<T: fmt::Display + Copy + Default + PartialEq + fmt::Debug > fmt::Debug for Csr<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "dims:      {}\n", self.dims).unwrap();
         write!(f, "v:         {:?}\n", self.v ).unwrap();
         write!(f, "col_index: {:?}\n", self.col_index ).unwrap();
         write!(f, "row_index: {:?}\n", self.row_index ).unwrap();
@@ -1093,6 +1145,23 @@ mod test {
 
         assert_eq!(q,q_ref);
         assert_eq!(r,r_ref);
+    }
+
+
+    #[test]
+    fn test_iterator() {
+        let mut a = Csr::from_data(&[
+            &[5,0,0,0],
+            &[0,8,0,0],
+            &[0,0,3,0],
+            &[0,6,0,0],
+        ]);
+
+        assert_eq!(a.next(), Some((5,0,0).into()));
+        assert_eq!(a.next(), Some((8,1,1).into()));
+        assert_eq!(a.next(), Some((3,2,2).into()));
+        assert_eq!(a.next(), Some((6,3,1).into()));
+        assert_eq!(a.next(), None);
     }
 
 }
