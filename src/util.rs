@@ -47,6 +47,7 @@ pub trait GetDims {
 #[derive(Debug)]
 pub enum MatErr {
     MatrixFinalised,
+    MatrixNotFinalised,
     NonSquareMatrix,
     IncorrectDimensions,
 }

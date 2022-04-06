@@ -254,6 +254,40 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug> Csr<T> {
             None
         }
     }
+
+    pub fn take_submatrix<D: Into<MatDim>>(&self, from: D, to: D) -> Result<Self,MatErr> {
+        if !self.is_finalised { return Err(MatErr::MatrixNotFinalised) }
+        let from = from.into();
+        let to = to.into();
+        // check requirements
+        // todo: return a nice error here if these aren't true
+        assert!(from.cols < to.cols);
+        assert!(to.cols <= self.dims.cols+1);
+        assert!(from.rows < to.rows);
+        assert!(to.rows <= self.dims.rows+1);
+
+        let submat_dims = (to.rows-from.rows,to.cols-from.cols);
+        let mut submatrix = Csr::new(submat_dims);
+
+        let mut row_index = 0;
+        for i in 0..self.v.len() {
+            while self.row_index[row_index] == i {
+                row_index += 1;
+            }
+            if (row_index-1) >= from.rows && (row_index-1) < to.rows {
+                let col_index = self.col_index[i];
+                if col_index >= from.cols && col_index < to.cols {
+                    // TODO: (row_index-1) makes first test pass, (row_index) makes second test pass
+                    // something broken in insert_unchecked
+                    let local_row_index = (row_index)-from.rows;
+                    let local_col_index = col_index-from.cols;
+                    submatrix.insert(self.v[i], local_row_index-1, local_col_index).unwrap();
+                }
+            }
+        }
+
+        Ok(submatrix.finalise())
+    }
 }
 
 impl<T> GetDims for Csr<T> {
@@ -563,6 +597,22 @@ mod test {
         assert_eq!(m.v.as_slice(),         &[5]);
         assert_eq!(m.col_index.as_slice(), &[0]);
         assert_eq!(m.row_index.as_slice(), &[0,1]);
+    }
+
+    #[test]
+    fn create_mat_by_insert() {
+        let mut b = Csr::new((3,3));
+        for (col,v) in [5,6,7].iter().enumerate() {
+            b.insert(*v, 0, col).unwrap();
+        }
+        let b = b.finalise();
+        let b_ref = Csr::from_data(&[
+            &[5,6,7],
+            &[0,0,0],
+            &[0,0,0],
+        ]);
+
+        assert_eq!(b,b_ref);
     }
 
     #[test]
@@ -955,6 +1005,68 @@ mod test {
 
         // println!("c:\n{c}");
         assert_eq!(c,c_ref);
+    }
+
+    #[test]
+    fn mul_scalar() {
+        let a = Csr::from_data(&[
+            &[1.0,2.0,3.0],
+            &[4.0,5.0,6.0],
+            &[7.0,8.0,9.0],
+        ]);
+
+        let b_ref = Csr::from_data(&[
+            &[2.0,4.0,6.0],
+            &[8.0,10.0,12.0],
+            &[14.0,16.0,18.0],
+        ]);
+
+        let b = a.mul_scalar(2.0);
+        assert_eq!(b,b_ref);
+    }
+
+    #[test]
+    fn test_submatrix() {
+        let a = Csr::from_data(&[
+            &[5,6,7,8,9],
+            &[0,0,0,0,0],
+            &[0,0,0,0,1],
+            &[1,0,0,0,0],
+        ]);
+
+        // test feasible opts first
+        println!("A");
+        let b = a.take_submatrix((0,0), (3,3)).unwrap();
+        let b_ref = Csr::from_data(&[
+            &[5,6,7],
+            &[0,0,0],
+            &[0,0,0],
+        ]);
+        ///////////////////////////////
+        assert_eq!(b,b_ref);
+        ///////////////////////////////
+
+        println!("B");
+        let b = a.take_submatrix((1,2), (4,5)).unwrap();
+        let b_ref = Csr::from_data(&[
+            &[0,0,0],
+            &[0,0,1],
+            &[0,0,0],
+        ]);
+        ///////////////////////////////
+        assert_eq!(b,b_ref);
+        ///////////////////////////////
+
+        println!("C");
+        let b = a.take_submatrix((0,2), (3,5)).unwrap();
+        let b_ref = Csr::from_data(&[
+            &[7,8,9],
+            &[0,0,0],
+            &[0,0,1],
+        ]);
+        ///////////////////////////////
+        assert_eq!(b,b_ref);
+        ///////////////////////////////
     }
 
     #[test]
