@@ -50,4 +50,5 @@ pub enum MatErr {
     MatrixNotFinalised,
     NonSquareMatrix,
     IncorrectDimensions,
+    PaddingSizeSmallerThanOriginal,
 }

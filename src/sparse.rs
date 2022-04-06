@@ -531,6 +531,25 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug + std::ops::Add<T,Output=T>
 
         output
     }
+
+
+    pub fn add_padding<D: Into<MatDim>>(self, padded_size: D, at: D) -> Result<Self,MatErr> {
+        let padded_size = padded_size.into();
+        let offset = at.into();
+        if self.dims.cols > padded_size.cols || self.dims.rows > padded_size.cols {
+            return Err(MatErr::PaddingSizeSmallerThanOriginal)
+        }
+
+        if padded_size.rows < self.dims.rows + offset.rows || padded_size.cols < self.dims.cols + offset.cols {
+            return Err(MatErr::IncorrectDimensions)
+        }
+
+        let mut return_mat = Self::new(padded_size);
+        for e in self {
+            return_mat.insert(e.v, e.row_index+offset.rows, e.col_index+offset.cols).unwrap();
+        }
+        Ok(return_mat.finalise())
+    }
 }
 
 impl Csr<f32> {
@@ -1162,6 +1181,29 @@ mod test {
         assert_eq!(a.next(), Some((3,2,2).into()));
         assert_eq!(a.next(), Some((6,3,1).into()));
         assert_eq!(a.next(), None);
+    }
+
+
+    #[test]
+    fn add_padding() {
+        let a = Csr::from_data(&[
+            &[1,1,1],
+            &[1,0,0],
+            &[1,0,0],
+        ]);
+
+        let padded_a = a.add_padding((5,5), (2,2)).unwrap();
+
+
+        let padded_a_ref = Csr::from_data(&[
+            &[0,0,0,0,0],
+            &[0,0,0,0,0],
+            &[0,0,1,1,1],
+            &[0,0,1,0,0],
+            &[0,0,1,0,0],
+        ]);
+
+        assert_eq!(padded_a,padded_a_ref);
     }
 
 }
