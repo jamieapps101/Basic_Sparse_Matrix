@@ -435,7 +435,6 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug + std::ops::Add<T,Output=T>
         // let mut self_row_index = 0;
         let mut row_index = 0;
         loop {
-            println!("row_index: {row_index}");
             let self_row = self.get_row_compact(row_index).unwrap();
             let rhs_row = rhs.get_row_compact(row_index).unwrap();
             let mut self_entry_index = 0;
