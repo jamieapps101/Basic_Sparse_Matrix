@@ -1206,4 +1206,59 @@ mod test {
         assert_eq!(padded_a,padded_a_ref);
     }
 
+
+    #[test]
+    fn qr_playground() {
+        // example following https://en.wikipedia.org/wiki/QR_decomposition#Using_Householder_reflections
+        let a = Csr::from_data(&[
+            &[ 12.0,-51.0,  4.0],
+            &[  6.0,167.0,-68.0],
+            &[ -4.0, 24.0,-41.0],
+        ]);
+
+        let x = a.get_col(0).unwrap();
+        let mut e = Csr::new((3,1));
+        e.insert(1.0, 0, 0).unwrap();
+        let e = e.finalise();
+        let a_mag = x.l2_norm();
+
+        let temp = e.mul_scalar(a_mag);
+        let u = x.sub_sparse( &temp ).unwrap();
+        let v = u.mul_scalar(1.0/u.l2_norm());
+        let q_1 = Csr::eye((3,3), 1.0).unwrap().sub_sparse(&v.mul_sparse(v.transpose()).unwrap().mul_scalar(2.0)).unwrap();
+        let q_1_a = q_1.mul_sparse(a.clone()).unwrap();
+
+        // need to get a minor matrix here
+        // mul by 1 not required, but part of minor definition
+        let a_prime = q_1_a.take_submatrix((1,1), (3,3)).unwrap().mul_scalar(1.0);
+
+
+        let x = a_prime.get_col(0).unwrap();
+        let mut e = Csr::new((2,1));
+        e.insert(1.0, 0, 0).unwrap();
+        let e = e.finalise();
+        let a_mag = x.l2_norm();
+
+        let temp = e.mul_scalar(a_mag);
+        let u = x.sub_sparse(&temp).unwrap();
+        let v = u.mul_scalar(1.0/u.l2_norm());
+        let temp = Csr::eye((2,2), 1.0).unwrap().sub_sparse(&v.mul_sparse(v.transpose()).unwrap().mul_scalar(2.0)).unwrap();
+        let mut q_2 = Csr::new((3,3));
+        q_2.insert(1.0, 0, 0).unwrap();
+        let q_2 = q_2.finalise().add_sparse(&temp.add_padding((3,3), (1,1)).unwrap()).unwrap();
+        println!("q_2:\n{q_2}");
+
+        let q = q_1.transpose().mul_sparse(q_2.transpose()).unwrap();
+
+        let r = q.transpose().mul_sparse(a.clone()).unwrap();
+
+
+        println!("a:\n{a}\n");
+        println!("q:\n{q}\n");
+        println!("r:\n{r}\n");
+
+        println!("\n\nqr={}",q.mul_sparse(r).unwrap());
+
+    }
+
 }
