@@ -32,6 +32,14 @@ impl From<MatDim> for (usize,usize) {
     }
 }
 
+use std::fmt;
+impl fmt::Display for MatDim {
+    // This trait requires `fmt` with this exact signature.
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "(rows: {}, cols: {})",self.rows,self.cols)
+    }
+}
+
 pub trait GetDims {
     fn get_dims(&self) -> MatDim;
 }
