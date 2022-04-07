@@ -92,7 +92,8 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug> Csr<T> {
         self.v.len() as f32 / (self.dims.rows*self.dims.cols) as f32
     }
 
-    pub fn get_val_at(&self, at: MatDim) -> Option<&T> {
+    pub fn get_val_at<D: Into<MatDim>>(&self, at: D) -> Option<&T> {
+        let at = at.into();
         let row_start = self.row_index[at.rows];
         let row_end = self.row_index[at.rows+1];
         for (local_index,col_index) in self.col_index[row_start..row_end].iter().enumerate() {
@@ -491,6 +492,10 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug + std::ops::Add<T,Output=T>
                 let mut col_position = 0;
                 let mut val = T::default();
                 loop {
+                    if row_position == row.len() || col_position == col.len() {
+                        break
+                    }
+
                     if row[row_position].col_index == col[col_position].row_index {
                         let t = *row[row_position].v * *col[col_position].v;
                         val = val + t;
@@ -502,10 +507,6 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug + std::ops::Add<T,Output=T>
                         row_position += 1;
                     } else {
                         unreachable!();
-                    }
-
-                    if row_position == row.len() || col_position == col.len() {
-                        break
                     }
                 }
                 result.insert(val, row_index, col_index).unwrap();
@@ -636,6 +637,24 @@ impl Csr<f32> {
 
         let r = q.transpose().mul_sparse(self.clone()).unwrap();
         (q,r)
+    }
+
+    /// this uses the QR algorithm
+    pub fn eigen_values(&self, iterations: usize) -> Vec<f32> {
+        let mut working_a = self.clone();
+
+        for _ in 0..iterations {
+            let (q,r) = working_a.qr_decomp();
+            working_a = r.mul_sparse(q).unwrap();
+        }
+
+        let mut eigen_values = Vec::new();
+        for i in 0..working_a.dims.cols {
+            eigen_values.push(*working_a.get_val_at((i,i)).unwrap());
+        }
+
+        eigen_values
+
     }
 }
 
@@ -1148,20 +1167,22 @@ mod test {
 
         ///// Round 3
         let a = Csr::from_data(&[
-            &[ 0.85714287, 0.4285714, -0.28571427 ],
-            &[ 0.4285714, -0.28571415, 0.8571428 ],
-            &[-0.28571427, 0.8571428,  0.42857146 ],
+            &[ 0 ],
+            &[ 1 ],
+            &[ 1 ],
         ]);
 
-        let b = Csr::from_data(&[
-            &[1.0,  0.0,        0.0        ],
-            &[0.0, -0.2800001,  0.96000016 ],
-            &[0.0,  0.96000016, 0.2799998  ],
-        ]);
+        let b = a.transpose();
 
         let c = a.mul_sparse(b).unwrap();
 
-        println!("c:\n{c}");
+        let c_ref = Csr::from_data(&[
+            &[0,0,0],
+            &[0,1,1],
+            &[0,1,1],
+        ]);
+
+        assert_eq!(c,c_ref);
 
     }
 
@@ -1281,5 +1302,25 @@ mod test {
         ]);
 
         assert_eq!(padded_a,padded_a_ref);
+    }
+
+
+    #[test]
+    fn get_eigen_vals() {
+        let a = Csr::from_data(&[
+            &[ 12.0,-51.0,  4.0],
+            &[  6.0,167.0,-68.0],
+            &[ -4.0, 24.0,-41.0],
+        ]);
+
+        let eigen_values_ref = vec![-34.196675, 16.05999094, 156.13668406];
+        for c in 0..20 {
+            let mut eigen_values = a.eigen_values(c);
+            eigen_values.sort_by(|a,b| a.partial_cmp(b).unwrap() );
+            let err = eigen_values.iter().zip(eigen_values_ref.iter()).map(|(v,r)|{
+                (v-r).powi(2)
+            }).sum::<f32>().powf(0.5);
+            println!("({err})");
+        }
     }
 }
