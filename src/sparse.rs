@@ -427,6 +427,7 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug + std::ops::Add<T,Output=T>
 
     pub fn sub_sparse(&self, rhs: &Self) -> Result<Self,MatErr> {
         if self.get_dims() != rhs.get_dims() {
+            println!("{} vs {}",self.get_dims(),rhs.get_dims());
             return Err(MatErr::IncorrectDimensions)
         }
         let mut output = Self::new(self.dims);
@@ -435,7 +436,6 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug + std::ops::Add<T,Output=T>
         // let mut self_row_index = 0;
         let mut row_index = 0;
         loop {
-            println!("row_index: {row_index}");
             let self_row = self.get_row_compact(row_index).unwrap();
             let rhs_row = rhs.get_row_compact(row_index).unwrap();
             let mut self_entry_index = 0;
@@ -531,6 +531,28 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug + std::ops::Add<T,Output=T>
 
         output
     }
+
+
+    pub fn add_padding<D: Into<MatDim>, C: Into<MatDim>>(&self, padded_size: C, at: D) -> Result<Self,MatErr> {
+        let padded_size = padded_size.into();
+        let offset = at.into();
+        if self.dims.cols > padded_size.cols || self.dims.rows > padded_size.cols {
+            return Err(MatErr::PaddingSizeSmallerThanOriginal)
+        }
+
+        if padded_size.rows < self.dims.rows + offset.rows || padded_size.cols < self.dims.cols + offset.cols {
+            println!("padded_size: {padded_size}");
+            println!("offset: {offset}");
+            println!("self.dims: {}",self.dims);
+            return Err(MatErr::IncorrectDimensions)
+        }
+
+        let mut return_mat = Self::new(padded_size);
+        for e in self.clone() {
+            return_mat.insert(e.v, e.row_index+offset.rows, e.col_index+offset.cols).unwrap();
+        }
+        Ok(return_mat.finalise())
+    }
 }
 
 impl Csr<f32> {
@@ -571,6 +593,49 @@ impl Csr<f32> {
             }
         }
         Ok(l.finalise())
+    }
+
+    pub fn qr_decomp(&self) -> (Self,Self) {
+        let mut working_mat = self.clone();
+        let mut q_queue = Vec::with_capacity(self.dims.cols);
+
+        for i in 0..(self.dims.cols-1) {
+            let x = working_mat.get_col(0).unwrap();
+
+            let mut e = Csr::new((self.dims.rows-i,1));
+            e.insert(1.0, 0, 0).unwrap();
+            let e = e.finalise();
+            let a_mag = x.l2_norm();
+
+            let u = x.sub_sparse(&e.mul_scalar(a_mag)).unwrap();
+            let v = u.mul_scalar(1.0/u.l2_norm());
+
+            let temp_a = Csr::eye((self.dims.rows-i,self.dims.rows-i), 1.0).unwrap();
+            let temp_b = v.mul_sparse(v.transpose()).unwrap().mul_scalar(2.0);
+            let q = temp_a.sub_sparse(&temp_b).unwrap();
+            q_queue.push(q.clone());
+            let q_a = q.mul_sparse(self.clone()).unwrap();
+            working_mat = q_a.take_submatrix((1,1), (self.dims.rows-i,self.dims.cols-i)).unwrap();
+        }
+
+        let mut q = Csr::eye(self.dims,1.0).unwrap();
+        for (i,q_undersized) in q_queue.iter().enumerate() {
+            let q_local;
+            if i == 0 {
+                q_local = q_undersized.clone();
+            } else {
+                let mut temp = Csr::new(self.dims);
+                for j in 0..i {
+                    temp.insert(1.0, j, j).unwrap();
+                }
+                let temp_2 = q_undersized.add_padding(self.dims, (i,i)).unwrap();
+                q_local = temp.finalise().add_sparse(&temp_2).unwrap();
+            }
+            q = q.mul_sparse(q_local.transpose()).unwrap();
+        }
+
+        let r = q.transpose().mul_sparse(self.clone()).unwrap();
+        (q,r)
     }
 }
 
@@ -1057,7 +1122,50 @@ mod test {
 
         // println!("c:\n{c}");
         assert_eq!(c,c_ref);
+
+        ///// Round 2
+        let a = Csr::from_data(&[
+            &[1,3,5],
+            &[3,7,9],
+            &[5,9,11],
+        ]);
+
+        let b = Csr::from_data(&[
+            &[2,4,6],
+            &[4,8,10],
+            &[6,10,12],
+        ]);
+
+        let c = a.mul_sparse(b).unwrap();
+
+        let c_ref = Csr::from_data(&[
+            &[ 44, 78, 96],
+            &[ 88,158,196],
+            &[112,202,252],
+        ]);
+
+        assert_eq!(c,c_ref);
+
+        ///// Round 3
+        let a = Csr::from_data(&[
+            &[ 0.85714287, 0.4285714, -0.28571427 ],
+            &[ 0.4285714, -0.28571415, 0.8571428 ],
+            &[-0.28571427, 0.8571428,  0.42857146 ],
+        ]);
+
+        let b = Csr::from_data(&[
+            &[1.0,  0.0,        0.0        ],
+            &[0.0, -0.2800001,  0.96000016 ],
+            &[0.0,  0.96000016, 0.2799998  ],
+        ]);
+
+        let c = a.mul_sparse(b).unwrap();
+
+        println!("c:\n{c}");
+
     }
+
+
 
     #[test]
     fn mul_scalar() {
@@ -1131,20 +1239,8 @@ mod test {
 
         let (q,r) = a.qr_decomp();
 
-        let q_ref = Csr::from_data(&[
-            &[ 0.8571,-0.3943,-0.3314],
-            &[ 0.4286, 0.9029, 0.0343],
-            &[-0.2857, 0.1714, 0.9429],
-        ]);
-
-        let r_ref = Csr::from_data(&[
-            &[ 14.0,  21.0, -14.0],
-            &[  0.0, 175.0, -70.0],
-            &[  0.0,   0.0,  35.0],
-        ]);
-
-        assert_eq!(q,q_ref);
-        assert_eq!(r,r_ref);
+        let q_r = q.mul_sparse(r).unwrap();
+        assert!(a.sub_sparse(&q_r).unwrap().l2_norm() < 0.1 );
     }
 
 
@@ -1164,4 +1260,26 @@ mod test {
         assert_eq!(a.next(), None);
     }
 
+
+    #[test]
+    fn add_padding() {
+        let a = Csr::from_data(&[
+            &[1,1,1],
+            &[1,0,0],
+            &[1,0,0],
+        ]);
+
+        let padded_a = a.add_padding((5,5), (2,2)).unwrap();
+
+
+        let padded_a_ref = Csr::from_data(&[
+            &[0,0,0,0,0],
+            &[0,0,0,0,0],
+            &[0,0,1,1,1],
+            &[0,0,1,0,0],
+            &[0,0,1,0,0],
+        ]);
+
+        assert_eq!(padded_a,padded_a_ref);
+    }
 }
