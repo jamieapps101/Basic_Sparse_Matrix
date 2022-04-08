@@ -174,19 +174,20 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug> Csr<T> {
             }
     }
 
-    pub fn get_row_compact(&self, index: usize) -> Option<Vec<CsrEntry<&T>>> {
-        assert!(self.is_finalised);
+    pub fn get_row_compact<'a>(&'a self, index: usize) -> Vec<CsrEntry<&'a T>> {
+        // assert!(self.is_finalised);
+        let mut return_row = Vec::with_capacity(self.dims.cols);
         let row_start = self.row_index[index];
-
         let row_end;
         if index == self.row_index.len()-1 {
             row_end = self.v.len();
         } else {
             row_end = self.row_index[index+1];
         }
-        Some(self.col_index[row_start..row_end].iter().zip(self.v[row_start..row_end].iter()).map( | (col_index,v) | {
-            CsrEntry { v, col_index: *col_index, row_index: index }
-        }).collect())
+        for (col_index,v) in self.col_index[row_start..row_end].iter().zip(self.v[row_start..row_end].iter()) {
+            return_row.push(CsrEntry { v, col_index: *col_index, row_index: index });
+        }
+        return_row
     }
 
     pub fn get_row_complete(&self, index: usize) -> Option<Vec<T>> {
@@ -355,7 +356,7 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug + std::ops::Add<T,Output=T>
         }
         let mut result = Self::new((self.dims.rows, rhs.get_dims().cols));
         for row_index in 0..self.dims.rows {
-            let row = self.get_row_compact(row_index).unwrap();
+            let row = self.get_row_compact(row_index);
             for col_index in 0..rhs.get_dims().cols {
                 let mut value = T::default();
                 for lhs_entry in &row {
@@ -381,8 +382,8 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug + std::ops::Add<T,Output=T>
         // let mut self_row_index = 0;
         let mut row_index = 0;
         loop {
-            let self_row = self.get_row_compact(row_index).unwrap();
-            let rhs_row = rhs.get_row_compact(row_index).unwrap();
+            let self_row = self.get_row_compact(row_index);
+            let rhs_row = rhs.get_row_compact(row_index);
             let mut self_entry_index = 0;
             let mut rhs_entry_index = 0;
             loop {
@@ -437,10 +438,10 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug + std::ops::Add<T,Output=T>
         // let mut self_row_index = 0;
         let mut row_index = 0;
         loop {
-            let self_row = self.get_row_compact(row_index).unwrap();
-            let rhs_row = rhs.get_row_compact(row_index).unwrap();
+            let self_row = self.get_row_compact(row_index);
+            let rhs_row = rhs.get_row_compact(row_index);
             let mut self_entry_index = 0;
-            let mut rhs_entry_index = 0;
+            let mut rhs_entry_index: usize = 0;
             loop {
                 let self_has_entry = self_row.len() > 0 && self_row.len() > self_entry_index;
                 let rhs_has_entry = rhs_row.len() > 0 && rhs_row.len() > rhs_entry_index;
@@ -485,7 +486,7 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug + std::ops::Add<T,Output=T>
     pub fn mul_sparse(&self, rhs: &Self) -> Result<Self,MatErr> {
         let mut result = Self::new((self.dims.rows,rhs.dims.cols));
         for row_index in 0..self.dims.rows {
-            let row = self.get_row_compact(row_index).unwrap();
+            let row = self.get_row_compact(row_index);
             for col_index in 0..rhs.dims.cols {
                 let col = rhs.get_col_compact(col_index).unwrap();
                 let mut row_position = 0;
@@ -762,11 +763,11 @@ mod test {
 
         assert_eq!(m.get_row_complete(2), Some(vec![ 0, 0,50,60,70, 0]));
 
-        assert_eq!(m.get_row_compact(2), Some(vec![
+        assert_eq!(m.get_row_compact(2), vec![
             CsrEntry {v: &50, row_index: 2, col_index: 2},
             CsrEntry {v: &60, row_index: 2, col_index: 3},
             CsrEntry {v: &70, row_index: 2, col_index: 4},
-        ]));
+        ]);
     }
 
     #[test]
@@ -786,7 +787,7 @@ mod test {
         ]));
 
         assert_eq!(m.get_col_compact(4), Some(vec![
-            CsrEntry {v: &70, row_index: 2, col_index: 4},
+            CsrEntry {v: &70, row_index: 2, col_index: 4}
         ]));
 
         let c = m.get_col(3).unwrap();
@@ -815,23 +816,23 @@ mod test {
         assert_eq!(m.get_row_complete(2), Some(vec![ 0,0,0,0,1 ]));
         assert_eq!(m.get_row_complete(3), Some(vec![ 1,0,0,0,0 ]));
 
-        assert_eq!(m.get_row_compact(0), Some(vec![
+        assert_eq!(m.get_row_compact(0), vec![
             CsrEntry {v: &5, row_index: 0, col_index: 0},
             CsrEntry {v: &6, row_index: 0, col_index: 1},
             CsrEntry {v: &7, row_index: 0, col_index: 2},
             CsrEntry {v: &8, row_index: 0, col_index: 3},
             CsrEntry {v: &9, row_index: 0, col_index: 4},
-        ]));
+        ]);
 
-        assert_eq!(m.get_row_compact(1), Some(vec![]));
+        assert_eq!(m.get_row_compact(1), vec![]);
 
-        assert_eq!(m.get_row_compact(2), Some(vec![
+        assert_eq!(m.get_row_compact(2), vec![
             CsrEntry {v: &1, row_index: 2, col_index: 4},
-        ]));
+        ]);
 
-        assert_eq!(m.get_row_compact(3), Some(vec![
+        assert_eq!(m.get_row_compact(3), vec![
             CsrEntry {v: &1, row_index: 3, col_index: 0},
-        ]));
+        ]);
 
     }
 
