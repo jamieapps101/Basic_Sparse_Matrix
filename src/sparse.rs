@@ -492,10 +492,7 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug + std::ops::Add<T,Output=T>
                 let mut row_position = 0;
                 let mut col_position = 0;
                 let mut val = T::default();
-                loop {
-                    if row_position == row.len() || col_position == col.len() {
-                        break
-                    }
+                while col_position != col.len() && row_position != row.len() {
 
                     if row[row_position].col_index == col[col_position].row_index {
                         let t = *row[row_position].v * *col[col_position].v;
@@ -504,13 +501,13 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug + std::ops::Add<T,Output=T>
                         col_position += 1;
                     } else if row[row_position].col_index > col[col_position].row_index {
                         col_position += 1;
-                    } else if row[row_position].col_index < col[col_position].row_index {
-                        row_position += 1;
                     } else {
-                        unreachable!();
+                        // row[row_position].col_index < col[col_position].row_index
+                        row_position += 1;
                     }
+
                 }
-                result.insert(val, row_index, col_index).unwrap();
+                result.insert_unchecked(val, row_index, col_index);
             }
         }
 
