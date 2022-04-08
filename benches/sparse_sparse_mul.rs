@@ -5,8 +5,8 @@ use basic_sparse_matrix::sparse::Csr;
 
 fn ss_mul(c: &mut Criterion) {
     let mut group = c.benchmark_group("ss_mul");
-    for i in 0..5 {
-        let density = (i+1)*10*3;
+    for i in [1,2,5,10,20,50,100,200,500,1000,2000,10000] {
+        let density = i*50;
         let elements = density;
         group.throughput(Throughput::Elements(elements as u64));
         group.sample_size(10);
