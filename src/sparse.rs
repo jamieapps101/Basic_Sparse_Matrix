@@ -482,7 +482,7 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug + std::ops::Add<T,Output=T>
         Ok(output.finalise())
     }
 
-    pub fn mul_sparse(&self, rhs: Self) -> Result<Self,MatErr> {
+    pub fn mul_sparse(&self, rhs: &Self) -> Result<Self,MatErr> {
         let mut result = Self::new((self.dims.rows,rhs.dims.cols));
         for row_index in 0..self.dims.rows {
             let row = self.get_row_compact(row_index).unwrap();
@@ -612,10 +612,10 @@ impl Csr<f32> {
             let v = u.mul_scalar(1.0/u.l2_norm());
 
             let temp_a = Csr::eye((self.dims.rows-i,self.dims.rows-i), 1.0).unwrap();
-            let temp_b = v.mul_sparse(v.transpose()).unwrap().mul_scalar(2.0);
+            let temp_b = v.mul_sparse(&v.transpose()).unwrap().mul_scalar(2.0);
             let q = temp_a.sub_sparse(&temp_b).unwrap();
             q_queue.push(q.clone());
-            let q_a = q.mul_sparse(self.clone()).unwrap();
+            let q_a = q.mul_sparse(self).unwrap();
             working_mat = q_a.take_submatrix((1,1), (self.dims.rows-i,self.dims.cols-i)).unwrap();
         }
 
@@ -632,10 +632,10 @@ impl Csr<f32> {
                 let temp_2 = q_undersized.add_padding(self.dims, (i,i)).unwrap();
                 q_local = temp.finalise().add_sparse(&temp_2).unwrap();
             }
-            q = q.mul_sparse(q_local.transpose()).unwrap();
+            q = q.mul_sparse(&q_local.transpose()).unwrap();
         }
 
-        let r = q.transpose().mul_sparse(self.clone()).unwrap();
+        let r = q.transpose().mul_sparse(self).unwrap();
         (q,r)
     }
 
@@ -645,7 +645,7 @@ impl Csr<f32> {
 
         for _ in 0..iterations {
             let (q,r) = working_a.qr_decomp();
-            working_a = r.mul_sparse(q).unwrap();
+            working_a = r.mul_sparse(&q).unwrap();
         }
 
         let mut eigen_values = Vec::new();
@@ -1131,7 +1131,7 @@ mod test {
         let b = Csr::eye((3,3), 1.0).unwrap();
         // println!("b:\n{b}");
 
-        let c = a.mul_sparse(b).unwrap();
+        let c = a.mul_sparse(&b).unwrap();
 
         let c_ref = Csr::from_data(&[
             &[1.0,2.0,3.0],
@@ -1155,7 +1155,7 @@ mod test {
             &[6,10,12],
         ]);
 
-        let c = a.mul_sparse(b).unwrap();
+        let c = a.mul_sparse(&b).unwrap();
 
         let c_ref = Csr::from_data(&[
             &[ 44, 78, 96],
@@ -1174,7 +1174,7 @@ mod test {
 
         let b = a.transpose();
 
-        let c = a.mul_sparse(b).unwrap();
+        let c = a.mul_sparse(&b).unwrap();
 
         let c_ref = Csr::from_data(&[
             &[0,0,0],
@@ -1260,7 +1260,7 @@ mod test {
 
         let (q,r) = a.qr_decomp();
 
-        let q_r = q.mul_sparse(r).unwrap();
+        let q_r = q.mul_sparse(&r).unwrap();
         assert!(a.sub_sparse(&q_r).unwrap().l2_norm() < 0.1 );
     }
 
