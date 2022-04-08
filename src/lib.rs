@@ -32,12 +32,13 @@ fn forward_substitution(l: Csr<f32>, b: Dense<f32>) -> Dense<f32> {
         for row_index in 0..y.get_dims().rows {
             let b_element = b.get_col(col_index)[row_index];
             let mut l_x = 0.0;
-            for entry in l.get_row_compact(row_index).unwrap() {
+            let row = l.get_row_compact(row_index);
+            for entry in &row {
                 if entry.col_index != row_index {
                     l_x = l_x + entry.v*y.get_col(col_index)[entry.col_index];
                 }
             }
-            let next_y = (b_element - l_x)/l.get_row_compact(row_index).unwrap().last().unwrap().v;
+            let next_y = (b_element - l_x)/row.last().unwrap().v;
             y.get_col_mut(col_index)[row_index] = next_y;
         }
     }
@@ -52,10 +53,11 @@ fn backward_substitution(l_star: Csr<f32>, y: Dense<f32>) -> Dense<f32> {
         for row_index in (0..x.get_dims().rows).rev() {
             let y_element = y.get_col(col_index)[row_index];
             let mut l_x = 0.0;
-            for entry in l_star.get_row_compact(row_index).unwrap().iter().skip(1) {
+            let row = l_star.get_row_compact(row_index);
+            for entry in row.iter().skip(1) {
                 l_x = l_x + entry.v*x.get_col(col_index)[entry.col_index];
             }
-            let next_x = (y_element - l_x)/l_star.get_row_compact(row_index).unwrap()[0].v;
+            let next_x = (y_element - l_x)/row[0].v;
             x.get_col_mut(col_index)[row_index] = next_x;
         }
     }
@@ -132,7 +134,7 @@ mod test {
         let x = solve(a, b);
 
         assert_eq!(x,x_ref);
-        
+
     }
 }
 
