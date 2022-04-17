@@ -150,6 +150,14 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug> Csr<T> {
         Ok(m.finalise())
     }
 
+    pub fn create_diagonal(contents: Vec<T>) -> Self {
+        let mut m = Self::new_with_capacity((contents.len(),contents.len()), contents.len());
+        for (i,v) in contents.iter().enumerate() {
+            m.insert(*v, i, i).unwrap();
+        }
+        m.finalise()
+    }
+
     pub fn get_nnz(&self) -> usize {
         *self.row_index.last().unwrap_or(&0)
     }
@@ -1423,5 +1431,33 @@ mod test {
 
         assert_eq!(ref_csr,csr);
 
+    }
+
+    #[test]
+    fn create_diagonal() {
+        // diagonal with non-zero entries
+        let c = vec![1,2,3,4];
+        let ref_m = Csr::from_data(&[
+            &[1,0,0,0],
+            &[0,2,0,0],
+            &[0,0,3,0],
+            &[0,0,0,4],
+        ]);
+        let m = Csr::create_diagonal(c);
+        assert_eq!(m,ref_m);
+
+        // create digonal with zero entries
+        let c = vec![0,1,0,2,0,3,0];
+        let ref_m = Csr::from_data(&[
+            &[0,0,0,0,0,0,0],
+            &[0,1,0,0,0,0,0],
+            &[0,0,0,0,0,0,0],
+            &[0,0,0,2,0,0,0],
+            &[0,0,0,0,0,0,0],
+            &[0,0,0,0,0,3,0],
+            &[0,0,0,0,0,0,0],
+        ]);
+        let m = Csr::create_diagonal(c);
+        assert_eq!(m,ref_m);
     }
 }
