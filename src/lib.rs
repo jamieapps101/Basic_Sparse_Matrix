@@ -19,8 +19,7 @@ pub fn solve(a: Csr<f32>, b: Dense<f32>) -> Dense<f32> {
     let l = a.cholesky_decomp().unwrap();
     let l_star = l.transpose();
     let y =  forward_substitution(l,b);
-    let x = backward_substitution(l_star, y);
-    x
+    backward_substitution(l_star, y)
 }
 
 
@@ -35,7 +34,7 @@ fn forward_substitution(l: Csr<f32>, b: Dense<f32>) -> Dense<f32> {
             let row = l.get_row_compact(row_index);
             for entry in &row {
                 if entry.col_index != row_index {
-                    l_x = l_x + entry.v*y.get_col(col_index)[entry.col_index];
+                    l_x += entry.v*y.get_col(col_index)[entry.col_index];
                 }
             }
             let next_y = (b_element - l_x)/row.last().unwrap().v;
@@ -55,7 +54,7 @@ fn backward_substitution(l_star: Csr<f32>, y: Dense<f32>) -> Dense<f32> {
             let mut l_x = 0.0;
             let row = l_star.get_row_compact(row_index);
             for entry in row.iter().skip(1) {
-                l_x = l_x + entry.v*x.get_col(col_index)[entry.col_index];
+                l_x += entry.v*x.get_col(col_index)[entry.col_index]
             }
             let next_x = (y_element - l_x)/row[0].v;
             x.get_col_mut(col_index)[row_index] = next_x;

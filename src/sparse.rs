@@ -46,7 +46,7 @@ impl<T> COO<T> {
         if self.dims.rows <= entry.row || self.dims.cols <= entry.col {
             return Err(MatErr::OutOfBounds)
         }
-        self.entries.push(entry.into());
+        self.entries.push(entry);
         Ok(())
     }
 }
@@ -240,16 +240,15 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug> Csr<T> {
             }
     }
 
-    pub fn get_row_compact<'a>(&'a self, index: usize) -> Vec<CsrEntry<&'a T>> {
+    pub fn get_row_compact(&self, index: usize) -> Vec<CsrEntry<&T>> {
         // assert!(self.is_finalised);
         let mut return_row = Vec::with_capacity(self.dims.cols);
         let row_start = self.row_index[index];
-        let row_end;
-        if index == self.row_index.len()-1 {
-            row_end = self.v.len();
+        let row_end = if index == self.row_index.len()-1 {
+            self.v.len()
         } else {
-            row_end = self.row_index[index+1];
-        }
+            self.row_index[index+1]
+        };
         for (col_index,v) in self.col_index[row_start..row_end].iter().zip(self.v[row_start..row_end].iter()) {
             return_row.push(CsrEntry { v, col_index: *col_index, row_index: index });
         }
@@ -257,18 +256,17 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug> Csr<T> {
     }
 
     pub fn get_row_complete(&self, index: usize) -> Option<Vec<T>> {
-        if self.row_index.len() == 0 { return None }
+        if self.row_index.is_empty() { return None }
         // need to handle special case where only enties in the index row exist with none in row index+1
         if index >= self.row_index.len() { return None }
 
         let row_start = self.row_index[index];
         let index_with_offset = index+1;
-        let row_end;
-        if self.row_index.len() == index_with_offset {
-            row_end = self.v.len()
+        let row_end = if self.row_index.len() == index_with_offset {
+            self.v.len()
         } else {
-            row_end = self.row_index[index+1];
-        }
+            self.row_index[index+1]
+        };
         let mut return_vec = Vec::with_capacity(self.dims.cols);
         let mut prev_col = 0;
         for (col,entry) in self.col_index[row_start..row_end].iter().zip(self.v[row_start..row_end].iter()) {
@@ -331,7 +329,7 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug> Csr<T> {
                 })
             }
         }
-        return Some(return_vec)
+        Some(return_vec)
     }
 
     /// This is an expensive function for a Csr style matrix
@@ -353,7 +351,7 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug> Csr<T> {
                 row_count +=1;
             }
         }
-        return Some(return_vec)
+        Some(return_vec)
     }
 
     /// This is an expensive function for a Csr style matrix
@@ -453,25 +451,28 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug + std::ops::Add<T,Output=T>
             let mut self_entry_index = 0;
             let mut rhs_entry_index = 0;
             loop {
-                let self_has_entry = self_row.len() > 0 && self_row.len() > self_entry_index;
-                let rhs_has_entry = rhs_row.len() > 0 && rhs_row.len() > rhs_entry_index;
+                let self_has_entry = !self_row.is_empty() && self_row.len() > self_entry_index;
+                let rhs_has_entry = !rhs_row.is_empty() && rhs_row.len() > rhs_entry_index;
                 if self_has_entry && rhs_has_entry {
                     let self_entry = &self_row[self_entry_index];
                     let rhs_entry  = &rhs_row[rhs_entry_index];
-                    if self_entry.col_index > rhs_entry.col_index {
-                        output.insert(*rhs_entry.v, rhs_entry.row_index, rhs_entry.col_index).unwrap();
-                        rhs_entry_index+=1;
-                    } else if self_entry.col_index < rhs_entry.col_index {
-                        output.insert(*self_entry.v, self_entry.row_index, self_entry.col_index).unwrap();
-                        self_entry_index+=1;
-                    } else {
-                        // self_entry.col_index == rhs_entry.col_index
-                        rhs_entry_index+=1;
-                        self_entry_index+=1;
-                        let v = *self_entry.v + *rhs_entry.v;
-                        output.insert(v, self_entry.row_index, self_entry.col_index).unwrap();
-                    }
 
+                    match self_entry.col_index.cmp(&rhs_entry.col_index) {
+                        Ordering::Greater => {
+                            output.insert(*rhs_entry.v, rhs_entry.row_index, rhs_entry.col_index).unwrap();
+                            rhs_entry_index+=1;
+                        }
+                        Ordering::Less => {
+                            output.insert(*self_entry.v, self_entry.row_index, self_entry.col_index).unwrap();
+                            self_entry_index+=1;
+                        }
+                        Ordering::Equal => {
+                            rhs_entry_index+=1;
+                            self_entry_index+=1;
+                            let v = *self_entry.v + *rhs_entry.v;
+                            output.insert(v, self_entry.row_index, self_entry.col_index).unwrap();
+                        }
+                    }
                 } else if self_has_entry && !rhs_has_entry {
                     let entry = &self_row[self_entry_index];
                     output.insert(*entry.v, entry.row_index, entry.col_index).unwrap();
@@ -509,23 +510,26 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug + std::ops::Add<T,Output=T>
             let mut self_entry_index = 0;
             let mut rhs_entry_index: usize = 0;
             loop {
-                let self_has_entry = self_row.len() > 0 && self_row.len() > self_entry_index;
-                let rhs_has_entry = rhs_row.len() > 0 && rhs_row.len() > rhs_entry_index;
+                let self_has_entry = !self_row.is_empty() && self_row.len() > self_entry_index;
+                let rhs_has_entry = !rhs_row.is_empty() && rhs_row.len() > rhs_entry_index;
                 if self_has_entry && rhs_has_entry {
                     let self_entry = &self_row[self_entry_index];
                     let rhs_entry  = &rhs_row[rhs_entry_index];
-                    if self_entry.col_index > rhs_entry.col_index {
-                        output.insert(T::default()-*rhs_entry.v, rhs_entry.row_index, rhs_entry.col_index).unwrap();
-                        rhs_entry_index+=1;
-                    } else if self_entry.col_index < rhs_entry.col_index {
-                        output.insert(*self_entry.v, self_entry.row_index, self_entry.col_index).unwrap();
-                        self_entry_index+=1;
-                    } else {
-                        // self_entry.col_index == rhs_entry.col_index
-                        rhs_entry_index+=1;
-                        self_entry_index+=1;
-                        let v = *self_entry.v - *rhs_entry.v;
-                        output.insert(v, self_entry.row_index, self_entry.col_index).unwrap();
+                    match self_entry.col_index.cmp(&rhs_entry.col_index) {
+                        Ordering::Greater => {
+                            output.insert(T::default()-*rhs_entry.v, rhs_entry.row_index, rhs_entry.col_index).unwrap();
+                            rhs_entry_index+=1;
+                        }
+                        Ordering::Less => {
+                            output.insert(*self_entry.v, self_entry.row_index, self_entry.col_index).unwrap();
+                            self_entry_index+=1;
+                        }
+                        Ordering::Equal => {
+                            rhs_entry_index+=1;
+                            self_entry_index+=1;
+                            let v = *self_entry.v - *rhs_entry.v;
+                            output.insert(v, self_entry.row_index, self_entry.col_index).unwrap();
+                        }
                     }
 
                 } else if self_has_entry && !rhs_has_entry {
@@ -560,15 +564,19 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug + std::ops::Add<T,Output=T>
                 let mut col_position = 0;
                 let mut val = T::default();
                 while col_position != col.len() && row_position != row.len() {
-                    if row[row_position].col_index == col[col_position].col_index {
-                        let t = *row[row_position].v * *col[col_position].v;
-                        val = val + t;
-                        row_position += 1;
-                        col_position += 1;
-                    } else if row[row_position].col_index > col[col_position].col_index {
-                        col_position += 1;
-                    } else {
-                        row_position += 1;
+                    match row[row_position].col_index.cmp(&col[col_position].col_index) {
+                        Ordering::Equal => {
+                            let t = *row[row_position].v * *col[col_position].v;
+                            val = val + t;
+                            row_position += 1;
+                            col_position += 1;
+                        }
+                        Ordering::Greater => {
+                            col_position += 1;
+                        }
+                        Ordering::Less => {
+                            row_position += 1;
+                        }
                     }
 
                 }
@@ -647,14 +655,13 @@ impl Csr<f32> {
                     };
                     sum += a * b;
                 }
-                let val_to_insert;
-                if i==j {
-                    val_to_insert = (self.get_row_complete(i).unwrap()[i]-sum).powf(0.5);
+                let val_to_insert = if i==j {
+                    (self.get_row_complete(i).unwrap()[i]-sum).powf(0.5)
                 } else {
                     let temp = self.get_row_complete(i).unwrap()[j]-sum;
                     let a = l.get_row_complete(j).unwrap()[j];
-                    val_to_insert = (1.0 / a) * temp;
-                }
+                    (1.0 / a) * temp
+                };
                 l.insert(val_to_insert, i, j).unwrap();
             }
         }
@@ -686,17 +693,16 @@ impl Csr<f32> {
 
         let mut q = Csr::eye(self.dims,1.0).unwrap();
         for (i,q_undersized) in q_queue.iter().enumerate() {
-            let q_local;
-            if i == 0 {
-                q_local = q_undersized.clone();
+            let q_local = if i == 0 {
+                q_undersized.clone()
             } else {
                 let mut temp = Csr::new(self.dims);
                 for j in 0..i {
                     temp.insert(1.0, j, j).unwrap();
                 }
                 let temp_2 = q_undersized.add_padding(self.dims, (i,i)).unwrap();
-                q_local = temp.finalise().add_sparse(&temp_2).unwrap();
-            }
+                temp.finalise().add_sparse(&temp_2).unwrap()
+            };
             q = q.mul_sparse(&q_local.transpose()).unwrap();
         }
 
@@ -737,7 +743,7 @@ impl<T: fmt::Display + Copy + Default + PartialEq + fmt::Debug> fmt::Display for
                     write!(f, "{:>5} ", T::default()).unwrap();
                 }
             }
-            write!(f, "|\n").unwrap();
+            writeln!(f, "|").unwrap();
         }
         Ok(())
     }
@@ -745,10 +751,10 @@ impl<T: fmt::Display + Copy + Default + PartialEq + fmt::Debug> fmt::Display for
 
 impl<T: fmt::Display + Copy + Default + PartialEq + fmt::Debug > fmt::Debug for Csr<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "dims:      {}\n", self.dims).unwrap();
-        write!(f, "v:         {:?}\n", self.v ).unwrap();
-        write!(f, "col_index: {:?}\n", self.col_index ).unwrap();
-        write!(f, "row_index: {:?}\n", self.row_index ).unwrap();
+        writeln!(f, "dims:      {}", self.dims).unwrap();
+        writeln!(f, "v:         {:?}", self.v ).unwrap();
+        writeln!(f, "col_index: {:?}", self.col_index ).unwrap();
+        writeln!(f, "row_index: {:?}", self.row_index ).unwrap();
         Ok(())
     }
 }

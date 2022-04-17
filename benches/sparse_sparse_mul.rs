@@ -1,7 +1,7 @@
 use rand::prelude::*;
 use criterion::*;
 
-use basic_sparse_matrix::sparse::Csr;
+use sparse_matrix::sparse::Csr;
 
 fn ss_mul(c: &mut Criterion) {
     let mut group = c.benchmark_group("ss_mul");

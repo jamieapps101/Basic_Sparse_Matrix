@@ -55,7 +55,7 @@ impl<T: fmt::Display + Copy + Default + PartialEq + fmt::Debug> fmt::Display for
                 let entry = self.get_col(col_index)[row_index];
                 write!(f, "{:>5}", entry).unwrap();
             }
-            write!(f, "|\n").unwrap();
+            writeln!(f, "|").unwrap();
         }
         Ok(())
     }
