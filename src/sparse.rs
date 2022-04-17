@@ -3,6 +3,67 @@ use crate::util::{GetDims,MatDim,MatErr};
 use crate::dense::Dense;
 
 
+#[derive(PartialEq,std::fmt::Debug)]
+pub struct COOEntry<T> {
+    row: usize,col: usize, value: T
+}
+
+
+impl<T> From<(usize,usize,T)> for COOEntry<T> {
+    fn from(e: (usize,usize,T)) -> Self {
+        Self {
+            row: e.0,
+            col: e.1,
+            value: e.2
+        }
+    }
+}
+
+// use core::cmp::Ordering;
+use std::cmp::{Ordering,PartialOrd};
+
+impl<T: PartialEq> PartialOrd for COOEntry<T> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        if self.row == other.row {
+            return Some(self.col.cmp(&other.col));
+        }
+        Some(self.row.cmp(&other.row))
+    }
+}
+
+pub struct COO<T> {
+    entries: Vec<COOEntry<T>>,
+    dims: MatDim,
+}
+
+impl<T> COO<T> {
+    pub fn with_capacity<D: Into<MatDim>>(dims: D, capacity: usize) -> Self {
+        Self { entries: Vec::with_capacity(capacity), dims: dims.into() }
+    }
+
+    pub fn insert<E: Into<COOEntry<T>>>(&mut self, entry: E) -> Result<(),MatErr> {
+        let entry = entry.into();
+        if self.dims.rows <= entry.row || self.dims.cols <= entry.col {
+            return Err(MatErr::OutOfBounds)
+        }
+        self.entries.push(entry.into());
+        Ok(())
+    }
+}
+
+
+impl<T: Copy+Default+std::fmt::Debug+PartialEq> From<COO<T>> for Csr<T> {
+    fn from(mut m: COO<T> ) -> Self {
+        let mut csr = Csr::new_with_capacity(m.dims, m.entries.len());
+        m.entries.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        for e in m.entries {
+            println!("e: {e:?}");
+            csr.insert(e.value, e.row, e.col).unwrap();
+        }
+        csr.finalise()
+    }
+}
+
 #[derive(PartialEq,Clone)]
 pub struct Csr<T> {
     dims: MatDim,
@@ -53,10 +114,15 @@ impl<T: std::fmt::Debug + Copy> Iterator for Csr<T> {
 
 impl<T: Copy + Default + PartialEq + std::fmt::Debug> Csr<T> {
     pub fn new<D: Into<MatDim>>(dims: D) -> Self {
+        Self::new_with_capacity(dims, 0)
+    }
+
+    pub fn new_with_capacity<D: Into<MatDim>>(dims: D, capacity: usize) -> Self {
+        let dims = dims.into();
         Self {
-            dims: dims.into(),
-            v: Vec::new(),
-            col_index: Vec::new(),
+            dims,
+            v: Vec::with_capacity(capacity),
+            col_index: Vec::with_capacity(capacity),
             row_index: vec![0],
             is_finalised: false,
             iter_v_index:   0,
@@ -1321,5 +1387,35 @@ mod test {
             }).sum::<f32>().powf(0.5);
             println!("({err})");
         }
+    }
+
+    #[test]
+    fn coo_to_csr() {
+        let mut coo = COO::with_capacity((5,6), 8);
+        coo.insert((0,0,1.0)).unwrap();
+        coo.insert((1,1,2.0)).unwrap();
+        coo.insert((1,2,3.0)).unwrap();
+        coo.insert((2,2,4.0)).unwrap();
+        coo.insert((2,3,5.0)).unwrap();
+        coo.insert((3,3,6.0)).unwrap();
+        coo.insert((3,4,7.0)).unwrap();
+        coo.insert((4,4,8.0)).unwrap();
+        coo.insert((4,5,9.0)).unwrap();
+
+        let csr = Csr::from(coo);
+        // println!("csr:\n{csr}");
+
+
+        let ref_csr = Csr::from_data(&[
+            &[1.0,0.0,0.0, 0.0,0.0,0.0],
+            &[0.0,2.0,3.0, 0.0,0.0,0.0],
+            &[0.0,0.0,4.0, 5.0,0.0,0.0],
+            &[0.0,0.0,0.0, 6.0,7.0,0.0],
+            &[0.0,0.0,0.0, 0.0,8.0,9.0],
+        ]);
+        // println!("ref_csr:\n{ref_csr}");
+
+        assert_eq!(ref_csr,csr);
+
     }
 }

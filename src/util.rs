@@ -51,4 +51,5 @@ pub enum MatErr {
     NonSquareMatrix,
     IncorrectDimensions,
     PaddingSizeSmallerThanOriginal,
+    OutOfBounds,
 }
