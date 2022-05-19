@@ -421,7 +421,7 @@ impl<T> GetDims for Csr<T> {
 }
 
 
-impl<T: Copy + Default + PartialEq + std::fmt::Debug + std::ops::Add<T,Output=T> + std::ops::Sub<T,Output=T> + std::ops::Mul<T,Output=T>> Csr<T> {
+impl<T: std::iter::Sum + Copy + Default + PartialEq + std::fmt::Debug + std::ops::Add<T,Output=T> + std::ops::Sub<T,Output=T> + std::ops::Mul<T,Output=T>> Csr<T> {
     pub fn mul_dense(&self, rhs: &Dense<T>) -> Result<Self,MatErr> {
         if self.dims.cols != rhs.get_dims().rows {
             return Err(MatErr::IncorrectDimensions)
@@ -442,6 +442,23 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug + std::ops::Add<T,Output=T>
             }
         }
         Ok(result.finalise())
+    }
+
+    pub fn mul_vector(&self, rhs: &[T]) -> Result<Vec<T>,MatErr> {
+        if self.dims.cols != rhs.len() {
+            return Err(MatErr::IncorrectDimensions)
+        }
+        // transposing means that the row access becomes col access, which in a CSR matrix
+        // is considerably faster
+        let self_t = self.transpose();
+        let mut result = vec![T::default(); self.dims.rows];
+        for (row_index,result_item) in result.iter_mut().enumerate().take(self.dims.rows) {
+            let row = self_t.get_col_compact(row_index).unwrap();
+            *result_item  = row.iter().map(|row_entry|{
+                *row_entry.v * rhs[row_entry.row_index]
+            }).sum();
+        }
+        Ok(result)
     }
 
     pub fn add_sparse(&self, rhs: &Self) -> Result<Self,MatErr> {
@@ -1459,5 +1476,31 @@ mod test {
         ]);
         let m = Csr::create_diagonal(c);
         assert_eq!(m,ref_m);
+    }
+
+    #[test]
+    fn test_mul_vector() {
+        let v = vec![0,1,2,3,4];
+        let m = Csr::from_data(&[
+            &[0,0,0,0],
+            &[0,0,0,0],
+            &[0,0,0,0],
+        ]);
+        assert_eq!(m.mul_vector(&v),Err(MatErr::IncorrectDimensions));
+
+        let m = Csr::from_data(&[
+            &[1,0,0,0,0],
+            &[0,1,0,0,0],
+            &[0,0,1,0,0],
+            &[0,0,0,1,0],
+            &[0,0,0,0,1],
+        ]);
+        assert_eq!(m.mul_vector(&v), Ok(v.clone()));
+
+        let m = Csr::from_data(&[
+            &[1,0,2,0,3],
+            &[0,1,0,2,0],
+        ]);
+        assert_eq!(m.mul_vector(&v), Ok(vec![16,7]));
     }
 }

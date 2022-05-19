@@ -44,7 +44,7 @@ pub trait GetDims {
     fn get_dims(&self) -> MatDim;
 }
 
-#[derive(Debug)]
+#[derive(Debug,PartialEq)]
 pub enum MatErr {
     MatrixFinalised,
     MatrixNotFinalised,
