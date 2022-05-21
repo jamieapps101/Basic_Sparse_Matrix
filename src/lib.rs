@@ -1,5 +1,6 @@
 pub mod sparse;
 pub mod dense;
+pub mod dense_static;
 pub mod util;
 
 

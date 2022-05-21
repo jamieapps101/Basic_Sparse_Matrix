@@ -1,6 +1,7 @@
 use std::fmt;
 use crate::util::{GetDims,MatDim,MatErr};
 use crate::dense::Dense;
+use crate::dense_static::DenseS;
 
 
 #[derive(PartialEq,std::fmt::Debug)]
@@ -426,6 +427,26 @@ impl<T: std::iter::Sum + Copy + Default + PartialEq + std::fmt::Debug + std::ops
         if self.dims.cols != rhs.get_dims().rows {
             return Err(MatErr::IncorrectDimensions)
         }
+        let mut result = Self::new((self.dims.rows, rhs.get_dims().cols));
+        for row_index in 0..self.dims.rows {
+            let row = self.get_row_compact(row_index);
+            for col_index in 0..rhs.get_dims().cols {
+                let mut value = T::default();
+                for lhs_entry in &row {
+                    let a = lhs_entry.v;
+                    let b = rhs.get_col(col_index)[lhs_entry.col_index];
+                    let c = (*a)*b;
+                    value = value + c;
+                }
+                // result.insert_unchecked(value, row_index, col_index)
+                result.insert(value, row_index, col_index).unwrap();
+            }
+        }
+        Ok(result.finalise())
+    }
+
+    pub fn mul_dense_s<const ROWS: usize, const COLS: usize>(&self, rhs: &DenseS<T,ROWS,COLS>) -> Result<Self,MatErr> {
+        if self.dims.cols != ROWS { return Err(MatErr::IncorrectDimensions) }
         let mut result = Self::new((self.dims.rows, rhs.get_dims().cols));
         for row_index in 0..self.dims.rows {
             let row = self.get_row_compact(row_index);
