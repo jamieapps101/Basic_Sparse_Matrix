@@ -171,7 +171,7 @@ impl<T: Copy + Default + PartialEq + std::fmt::Debug> Csr<T> {
         let row_start = self.row_index[at.rows];
         let row_end = self.row_index[at.rows+1];
         for (local_index,col_index) in self.col_index[row_start..row_end].iter().enumerate() {
-            if col_index == &at.rows {
+            if col_index == &at.cols {
                 return Some(&self.v[row_start+local_index])
             }
         }
