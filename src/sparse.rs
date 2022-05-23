@@ -465,21 +465,20 @@ impl<T: std::iter::Sum + Copy + Default + PartialEq + std::fmt::Debug + std::ops
         Ok(result.finalise())
     }
 
-    pub fn mul_vector(&self, rhs: &[T]) -> Result<Vec<T>,MatErr> {
-        if self.dims.cols != rhs.len() {
+    pub fn mul_vector(&self, rhs: &[T], out: &mut [T]) -> Result<(),MatErr> {
+        if self.dims.cols != rhs.len() || self.dims.rows != out.len() {
             return Err(MatErr::IncorrectDimensions)
         }
         // transposing means that the row access becomes col access, which in a CSR matrix
         // is considerably faster
         let self_t = self.transpose();
-        let mut result = vec![T::default(); self.dims.rows];
-        for (row_index,result_item) in result.iter_mut().enumerate().take(self.dims.rows) {
+        for (row_index,result_item) in out.iter_mut().enumerate().take(self.dims.rows) {
             let row = self_t.get_col_compact(row_index).unwrap();
             *result_item  = row.iter().map(|row_entry|{
                 *row_entry.v * rhs[row_entry.row_index]
             }).sum();
         }
-        Ok(result)
+        Ok(())
     }
 
     pub fn add_sparse(&self, rhs: &Self) -> Result<Self,MatErr> {
@@ -1507,7 +1506,8 @@ mod test {
             &[0,0,0,0],
             &[0,0,0,0],
         ]);
-        assert_eq!(m.mul_vector(&v),Err(MatErr::IncorrectDimensions));
+        let mut out = vec![0;5];
+        assert_eq!(m.mul_vector(&v,&mut out),Err(MatErr::IncorrectDimensions));
 
         let m = Csr::from_data(&[
             &[1,0,0,0,0],
@@ -1516,12 +1516,15 @@ mod test {
             &[0,0,0,1,0],
             &[0,0,0,0,1],
         ]);
-        assert_eq!(m.mul_vector(&v), Ok(v.clone()));
+        assert_eq!(m.mul_vector(&v,&mut out), Ok(()));
+        assert_eq!(out, v.clone());
 
         let m = Csr::from_data(&[
             &[1,0,2,0,3],
             &[0,1,0,2,0],
         ]);
-        assert_eq!(m.mul_vector(&v), Ok(vec![16,7]));
+        let mut out = vec![0;2];
+        assert_eq!(m.mul_vector(&v,&mut out), Ok(()));
+        assert_eq!(out, vec![16,7]);
     }
 }
